@@ -5,14 +5,19 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM = `Eres un SDR experto. Calificás leads B2B del 1 al 10 y generás un primer mensaje breve, natural y personalizado (2-3 frases, sin precio, sin sonar a plantilla). Respondé SOLO JSON válido: {"score": number, "reason": string, "message": string}.`;
 
-export async function scoreLead(lead) {
+export async function scoreLead(lead, campaign = {}) {
   const criteria = getSetting('qualification_criteria');
   const myCompany = getSetting('my_company_info');
   const template = getSetting('base_template');
+  const langMap = { es: 'Español', en: 'Inglés', auto: 'detectá el idioma del lead según su ubicación y datos (Miami → Español o Inglés según el nombre/contenido)' };
+  const lang = langMap[campaign.language] || langMap.auto;
+  const service = campaign.service_offered ? `SERVICIO ESPECÍFICO A OFRECER EN ESTA CAMPAÑA: ${campaign.service_offered}` : '';
 
   const user = `MI EMPRESA: ${myCompany}
+${service}
 CRITERIO DE LEAD IDEAL: ${criteria}
 PLANTILLA BASE (guía de tono): ${template}
+IDIOMA DEL MENSAJE: ${lang}
 
 LEAD:
 - Nombre: ${lead.name || 'N/A'}
@@ -52,10 +57,12 @@ export async function scoreAllPending(limit = 50) {
   const minScore = Number(getSetting('min_score')) || 4;
   const leads = db.prepare('SELECT * FROM leads WHERE score IS NULL LIMIT ?').all(limit);
   const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ? WHERE id = ?`);
+  const campStmt = db.prepare('SELECT * FROM campaigns WHERE id = ?');
   let done = 0, failed = 0;
   for (const lead of leads) {
     try {
-      const r = await scoreLead(lead);
+      const campaign = lead.campaign_id ? campStmt.get(lead.campaign_id) : {};
+      const r = await scoreLead(lead, campaign);
       const status = r.score < minScore ? 'descartado' : lead.status;
       upd.run(r.score, r.reason, r.message, status, lead.id);
       done++;

@@ -5,6 +5,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
   location TEXT,
   keywords TEXT,
   max_leads INTEGER,
+  language TEXT DEFAULT 'auto',
+  service_offered TEXT,
   status TEXT DEFAULT 'pending',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );

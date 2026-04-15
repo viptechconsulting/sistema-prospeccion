@@ -14,7 +14,9 @@ function buildInput(platform, { niche, location, keywords, maxLeads }) {
         searchStringsArray: [search],
         locationQuery: location,
         maxCrawledPlacesPerSearch: maxLeads,
-        language: 'es'
+        language: 'es',
+        scrapeContacts: true,
+        scrapePlaceDetailPage: true
       };
     case 'linkedin':
       return {
@@ -51,14 +53,17 @@ export async function runActor(platform, params) {
 
 export function normalizeLead(platform, raw) {
   switch (platform) {
-    case 'google_maps':
+    case 'google_maps': {
+      const emails = raw.emails || raw.contactDetails?.emails || raw.additionalInfo?.emails;
+      const phones = raw.phones || raw.contactDetails?.phones;
       return {
         name: raw.title || raw.name,
         company: raw.title,
-        profile_url: raw.url || raw.placeId,
-        email: Array.isArray(raw.emails) ? raw.emails[0] : raw.email,
-        phone: raw.phone || raw.phoneUnformatted
+        profile_url: raw.url || raw.website || raw.placeId,
+        email: Array.isArray(emails) ? emails[0] : (emails || raw.email),
+        phone: raw.phone || raw.phoneUnformatted || (Array.isArray(phones) ? phones[0] : null)
       };
+    }
     case 'linkedin':
       return {
         name: raw.fullName || raw.name,

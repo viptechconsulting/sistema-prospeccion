@@ -13,6 +13,10 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.exec(fs.readFileSync(schemaPath, 'utf8'));
 
+for (const col of [['language', "TEXT DEFAULT 'auto'"], ['service_offered', 'TEXT']]) {
+  try { db.prepare(`ALTER TABLE campaigns ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
+}
+
 const defaults = {
   delay_min_seconds: '30',
   delay_max_seconds: '90',
