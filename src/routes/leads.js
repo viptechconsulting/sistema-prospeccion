@@ -1,0 +1,63 @@
+import express from 'express';
+import { db } from '../db/index.js';
+import { scoreAllPending, generateFollowup } from '../services/scoring.js';
+
+export const leads = express.Router();
+
+leads.get('/', (req, res) => {
+  const { platform, status, minScore } = req.query;
+  const where = [], args = [];
+  if (platform) { where.push('platform = ?'); args.push(platform); }
+  if (status) { where.push('status = ?'); args.push(status); }
+  if (minScore) { where.push('score >= ?'); args.push(Number(minScore)); }
+  const sql = `SELECT * FROM leads ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY score DESC NULLS LAST, id DESC LIMIT 500`;
+  res.json(db.prepare(sql).all(...args));
+});
+
+leads.get('/metrics', (_req, res) => {
+  const total = db.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
+  const byStatus = db.prepare('SELECT status, COUNT(*) AS n FROM leads GROUP BY status').all();
+  const contacted = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE contacted_at IS NOT NULL").get().n;
+  const meetings = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'reunion_agendada'").get().n;
+  const responded = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status IN ('reunion_agendada','respondio')").get().n;
+  const responseRate = contacted ? (responded / contacted) : 0;
+  res.json({ total, contacted, meetings, responseRate, byStatus });
+});
+
+leads.get('/:id', (req, res) => {
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'not found' });
+  const messages = db.prepare('SELECT * FROM messages WHERE lead_id = ? ORDER BY id ASC').all(req.params.id);
+  res.json({ lead, messages });
+});
+
+leads.patch('/:id', (req, res) => {
+  const fields = ['status', 'notes', 'suggested_message'].filter(k => k in req.body);
+  if (!fields.length) return res.json({ ok: true });
+  const sql = `UPDATE leads SET ${fields.map(f => `${f} = ?`).join(', ')} WHERE id = ?`;
+  db.prepare(sql).run(...fields.map(f => req.body[f]), req.params.id);
+  res.json({ ok: true });
+});
+
+leads.post('/score-pending', async (_req, res) => {
+  const r = await scoreAllPending(50);
+  res.json(r);
+});
+
+leads.post('/:id/mark-sent', (req, res) => {
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'not found' });
+  const content = req.body.content || lead.suggested_message || '';
+  db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, 'initial', content);
+  db.prepare("UPDATE leads SET status = 'mensaje_enviado', contacted_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
+  res.json({ ok: true });
+});
+
+leads.post('/:id/followup', async (req, res) => {
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'not found' });
+  const message = await generateFollowup(lead);
+  db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, 'followup', message);
+  db.prepare("UPDATE leads SET status = 'mensaje_enviado', last_followup_at = CURRENT_TIMESTAMP, followup_count = followup_count + 1 WHERE id = ?").run(lead.id);
+  res.json({ ok: true, message });
+});

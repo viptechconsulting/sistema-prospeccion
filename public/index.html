@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Prospección CRM</title>
+<link rel="stylesheet" href="/app.css"/>
+</head>
+<body>
+<header>
+  <h1>⚡ Prospección</h1>
+  <nav>
+    <button data-view="kanban" class="active">Kanban</button>
+    <button data-view="table">Tabla</button>
+    <button data-view="settings">Settings</button>
+    <button id="btn-new" class="primary">+ Nueva campaña</button>
+  </nav>
+</header>
+
+<section id="metrics" class="metrics"></section>
+
+<section id="filters" class="filters">
+  <select id="f-platform"><option value="">Todas las plataformas</option><option value="google_maps">Google Maps</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option></select>
+  <select id="f-status"><option value="">Todos los estados</option><option value="por_contactar">Por contactar</option><option value="mensaje_enviado">Mensaje enviado</option><option value="followup_pendiente">Follow-up pendiente</option><option value="reunion_agendada">Reunión agendada</option><option value="descartado">Descartado</option></select>
+  <input id="f-score" type="number" min="1" max="10" placeholder="Score min"/>
+  <button id="btn-score">Calificar pendientes</button>
+  <button id="btn-refresh">↻</button>
+</section>
+
+<main id="view-kanban" class="view active">
+  <div class="kanban">
+    <div class="col" data-status="por_contactar"><h3>Por contactar <span class="n"></span></h3><div class="items"></div></div>
+    <div class="col" data-status="mensaje_enviado"><h3>Mensaje enviado <span class="n"></span></h3><div class="items"></div></div>
+    <div class="col" data-status="followup_pendiente"><h3>Follow-up pendiente <span class="n"></span></h3><div class="items"></div></div>
+    <div class="col" data-status="reunion_agendada"><h3>Reunión agendada <span class="n"></span></h3><div class="items"></div></div>
+  </div>
+</main>
+
+<main id="view-table" class="view">
+  <table class="leads">
+    <thead><tr><th>Nombre</th><th>Empresa</th><th>Plataforma</th><th>Score</th><th>Estado</th><th>Contactado</th><th>Mensaje</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+</main>
+
+<main id="view-settings" class="view">
+  <form id="settings-form" class="settings"></form>
+</main>
+
+<!-- New campaign modal -->
+<div id="modal-campaign" class="modal hidden">
+  <form class="card">
+    <h2>Nueva campaña</h2>
+    <label>Plataforma<select name="platform" required><option value="google_maps">Google Maps</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option></select></label>
+    <label>Nicho<input name="niche" placeholder="dentistas, spas, agencias..." required/></label>
+    <label>Ubicación<input name="location" placeholder="Miami, FL"/></label>
+    <label>Palabras clave<input name="keywords" placeholder="opcional"/></label>
+    <label>Máx leads<input name="maxLeads" type="number" value="25" min="1" max="500"/></label>
+    <div class="row">
+      <button type="button" class="cancel">Cancelar</button>
+      <button type="submit" class="primary">Lanzar</button>
+    </div>
+  </form>
+</div>
+
+<!-- Lead detail modal -->
+<div id="modal-lead" class="modal hidden">
+  <div class="card lead-detail"></div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+<script src="/app.js"></script>
+</body>
+</html>
