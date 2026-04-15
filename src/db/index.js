@@ -7,6 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.resolve(__dirname, '../../data/prospeccion.db');
 const schemaPath = path.resolve(__dirname, './schema.sql');
 
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 export const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
