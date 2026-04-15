@@ -86,7 +86,7 @@ function renderTable() {
 
 function parseMessages(raw) {
   if (!raw) return null;
-  try { const o = JSON.parse(raw); if (o && typeof o === 'object' && (o.email || o.whatsapp || o.instagram_dm)) return o; } catch {}
+  try { const o = JSON.parse(raw); if (o && typeof o === 'object' && (o.email || o.whatsapp || o.instagram_dm || o.loom_script)) return o; } catch {}
   return null;
 }
 
@@ -98,6 +98,7 @@ async function openLead(id) {
   const emailSubject = parsed?.email?.subject || '';
   const wa = parsed?.whatsapp || '';
   const ig = parsed?.instagram_dm || '';
+  const loom = parsed?.loom_script || '';
   const legacy = parsed ? '' : (lead.suggested_message || '');
 
   $('.lead-detail').innerHTML = `
@@ -111,10 +112,12 @@ async function openLead(id) {
       <button class="tab active" data-ch="whatsapp">WhatsApp</button>
       <button class="tab" data-ch="email">Email</button>
       <button class="tab" data-ch="instagram_dm">Instagram</button>
+      <button class="tab" data-ch="loom_script">Loom Script</button>
     </div>
     <div id="ch-whatsapp" class="ch-panel active"><textarea id="t-whatsapp">${escapeHtml(wa)}</textarea></div>
     <div id="ch-email" class="ch-panel"><input id="t-email-subject" placeholder="Asunto" value="${escapeHtml(emailSubject)}"/><textarea id="t-email">${escapeHtml(emailBody)}</textarea></div>
     <div id="ch-instagram_dm" class="ch-panel"><textarea id="t-instagram_dm">${escapeHtml(ig)}</textarea></div>
+    <div id="ch-loom_script" class="ch-panel"><textarea id="t-loom_script" style="min-height:300px">${escapeHtml(loom)}</textarea></div>
     ` : `<label>Mensaje sugerido<textarea id="t-whatsapp">${escapeHtml(legacy)}</textarea></label>`}
 
     <label>Notas<textarea id="d-notes">${escapeHtml(lead.notes || '')}</textarea></label>
@@ -146,7 +149,8 @@ async function openLead(id) {
   const buildMessagesJSON = () => JSON.stringify({
     email: { subject: $('#t-email-subject')?.value || emailSubject, body: $('#t-email')?.value || emailBody },
     whatsapp: $('#t-whatsapp')?.value || wa,
-    instagram_dm: $('#t-instagram_dm')?.value || ig
+    instagram_dm: $('#t-instagram_dm')?.value || ig,
+    loom_script: $('#t-loom_script')?.value || loom
   });
 
   $('.close').onclick = () => $('#modal-lead').classList.add('hidden');

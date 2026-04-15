@@ -19,6 +19,7 @@ function channelSpecs(lang) {
 - email: objeto {subject, body}. Body máx. 120 palabras. Abrir con observación ESPECÍFICA y verificable del negocio (ej: "sus 483 reseñas", "tu ubicación en Brickell", "el servicio de PRP que ofrecen"). No halagos genéricos tipo "vi que están fuertes". CTA suave al final.
 - whatsapp: string máx. 60 palabras. Humano, directo, sin formalismos. OBLIGATORIO incluir un dato concreto y verificable del negocio en la primera frase. Cierra con pregunta abierta.
 - instagram_dm: string máx. 40 palabras. Muy casual, empático. OBLIGATORIO mencionar un detalle concreto del negocio (nombre, ubicación específica, número de reseñas/followers, servicio que ofrecen, algo de su bio). Prohibido genérico tipo "están fuertes" o "tienen buena presencia". Sin links, máximo 1 emoji.
+- loom_script: string con el guion completo para un video Loom personalizado de 3-5 minutos (aprox. 450-700 palabras). Estructura OBLIGATORIA con estos bloques marcados: "[HOOK 0:00-0:15]" (saludo + nombre del lead + un detalle ultra-específico que vio sobre su negocio, gancho de curiosidad), "[OBSERVACIÓN 0:15-1:00]" (qué notó concreto en su presencia digital/negocio que podría estar limitándolos), "[PROPUESTA 1:00-3:00]" (cómo el servicio resuelve eso, con un mini-ejemplo o resultado plausible, sin prometer cifras exactas), "[CTA 3:00-4:00]" (invitar a 15 min de llamada o responder el video, bajo compromiso), "[CIERRE 4:00-5:00]" (agradecer, personal, mencionar de nuevo algo del negocio). Tono conversacional, natural (como hablarle a un amigo dueño de negocio), NO leído de guion. Sin jerga corporativa.
 Idioma de TODOS los mensajes: ${lang}.`;
 }
 
@@ -57,7 +58,7 @@ TAREA:
 ${channelSpecs(lang)}
 
 Devuelve JSON estricto con esta forma:
-{"score": number, "reason": string, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string}}`;
+{"score": number, "reason": string, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -99,9 +100,9 @@ export async function scoreAllPending(limit = 50) {
 }
 
 const FOLLOWUP_OBJECTIVES = [
-  { n: 1, day: 3, title: 'FOLLOW UP 1 — Día 3 (Quizás no lo vieron)', goal: 'Confirmar que llegó el mensaje, sin presionar.', limits: 'EMAIL: máx 80 palabras, como respuesta al hilo anterior, reafirma idea principal en una oración. WHATSAPP: máx 40 palabras, muy breve. INSTAGRAM_DM: máx 25 palabras, recordatorio amable.' },
-  { n: 2, day: 7, title: 'FOLLOW UP 2 — Día 7 (Agregar valor nuevo)', goal: 'Dar una razón nueva para responder. Simulá haber hecho un hallazgo concreto plausible sobre su negocio basado en el resumen del lead y el servicio.', limits: 'EMAIL: máx 100 palabras, menciona el hallazgo específico, CTA a mostrar el hallazgo. WHATSAPP: máx 50 palabras, directo al hallazgo + pregunta de 5 min. INSTAGRAM_DM: máx 30 palabras, hallazgo + pregunta.' },
-  { n: 3, day: 14, title: 'FOLLOW UP 3 — Día 14 (Cierre elegante)', goal: 'Cerrar el ciclo sin quemar el puente. Dejar puerta abierta.', limits: 'EMAIL: máx 80 palabras, cálido, indica que es el último mensaje, sin presión. WHATSAPP: máx 35 palabras, cordial sin drama. INSTAGRAM_DM: máx 20 palabras, una frase de cierre amigable.' }
+  { n: 1, day: 3, title: 'FOLLOW UP 1 — Día 3 (Quizás no lo vieron)', goal: 'Confirmar que llegó el mensaje, sin presionar.', limits: 'EMAIL: máx 80 palabras, como respuesta al hilo anterior, reafirma idea principal en una oración. WHATSAPP: máx 40 palabras, muy breve. INSTAGRAM_DM: máx 25 palabras, recordatorio amable. LOOM_SCRIPT: guion corto de 1-2 min (~150-250 palabras) con bloques [HOOK][RECORDATORIO][CTA], tono ultra casual.' },
+  { n: 2, day: 7, title: 'FOLLOW UP 2 — Día 7 (Agregar valor nuevo)', goal: 'Dar una razón nueva para responder. Simulá haber hecho un hallazgo concreto plausible sobre su negocio basado en el resumen del lead y el servicio.', limits: 'EMAIL: máx 100 palabras, menciona el hallazgo específico, CTA a mostrar el hallazgo. WHATSAPP: máx 50 palabras, directo al hallazgo + pregunta de 5 min. INSTAGRAM_DM: máx 30 palabras, hallazgo + pregunta. LOOM_SCRIPT: guion de 2-3 min (~300-450 palabras) con bloques [HOOK][HALLAZGO CONCRETO][IMPACTO][CTA].' },
+  { n: 3, day: 14, title: 'FOLLOW UP 3 — Día 14 (Cierre elegante)', goal: 'Cerrar el ciclo sin quemar el puente. Dejar puerta abierta.', limits: 'EMAIL: máx 80 palabras, cálido, indica que es el último mensaje, sin presión. WHATSAPP: máx 35 palabras, cordial sin drama. INSTAGRAM_DM: máx 20 palabras, una frase de cierre amigable. LOOM_SCRIPT: guion corto de 1 min (~120-180 palabras), cierre cálido sin presión, puerta abierta.' }
 ];
 
 export async function generateFollowup(lead, campaign = {}) {
@@ -121,7 +122,7 @@ LÍMITES POR CANAL: ${step.limits}
 Idioma: ${lang}.
 
 Devuelve JSON estricto:
-{"messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string}}`;
+{"messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',

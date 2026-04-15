@@ -57,7 +57,8 @@ input:focus, select:focus, textarea:focus { outline:none; border-color:#00ff88; 
 .lead-detail .msg-row .k { color:#00ff88; font-weight:600; font-size:10px; text-transform:uppercase; }
 .tabs { display:flex; gap:4px; margin:12px 0 8px; border-bottom:1px solid #2a2a2a; }
 .tab { background:transparent; border:none; border-bottom:2px solid transparent; color:#888; padding:8px 14px; border-radius:0; }
-.tab.active { color:#00ff88; border-bottom-color:#00ff88; }
+.tab { background:transparent !important; }
+.tab.active { background:transparent !important; color:#00ff88 !important; border-bottom-color:#00ff88; font-weight:600; }
 .ch-panel { display:none; margin-bottom:10px; }
 .ch-panel.active { display:block; }
 .ch-panel textarea { min-height:120px; }
