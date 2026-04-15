@@ -10,12 +10,12 @@ campaigns.get('/', (_req, res) => {
 });
 
 campaigns.post('/', async (req, res) => {
-  const { platform, niche, location, keywords, maxLeads = 25, language = 'auto', serviceOffered = '' } = req.body;
+  const { platform, niche, location, keywords, maxLeads = 25, language = 'auto', serviceOffered = '', mainBenefit = '', keyDifferential = '' } = req.body;
   if (!platform) return res.status(400).json({ error: 'platform requerida' });
 
   const campaignId = db.prepare(
-    'INSERT INTO campaigns (platform, niche, location, keywords, max_leads, language, service_offered, status) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(platform, niche, location, keywords, maxLeads, language, serviceOffered, 'running').lastInsertRowid;
+    'INSERT INTO campaigns (platform, niche, location, keywords, max_leads, language, service_offered, main_benefit, key_differential, status) VALUES (?,?,?,?,?,?,?,?,?,?)'
+  ).run(platform, niche, location, keywords, maxLeads, language, serviceOffered, mainBenefit, keyDifferential, 'running').lastInsertRowid;
 
   res.json({ id: campaignId, status: 'running' });
 

@@ -3,27 +3,27 @@ import { db, getSetting } from '../db/index.js';
 import { generateFollowup } from './scoring.js';
 
 async function tick() {
-  const days1 = Number(getSetting('followup_days_1')) || 3;
-  const days2 = Number(getSetting('followup_days_2')) || 7;
-  const maxF = Number(getSetting('max_followups')) || 2;
+  const days = [
+    Number(getSetting('followup_days_1')) || 3,
+    Number(getSetting('followup_days_2')) || 7,
+    Number(getSetting('followup_days_3')) || 14
+  ];
+  const maxF = Number(getSetting('max_followups')) || 3;
 
-  const candidates = db.prepare(`
-    SELECT * FROM leads
-    WHERE status = 'mensaje_enviado'
-      AND contacted_at IS NOT NULL
-      AND followup_count < ?
-      AND (
-        (followup_count = 0 AND datetime(contacted_at, '+' || ? || ' days') <= datetime('now'))
-        OR
-        (followup_count >= 1 AND last_followup_at IS NOT NULL AND datetime(last_followup_at, '+' || ? || ' days') <= datetime('now'))
-      )
-  `).all(maxF, days1, days2);
+  const all = db.prepare(`SELECT * FROM leads WHERE status = 'mensaje_enviado' AND contacted_at IS NOT NULL AND followup_count < ?`).all(maxF);
+  const now = Date.now();
+  const candidates = all.filter(l => {
+    const idx = l.followup_count || 0;
+    const waitDays = days[idx];
+    const from = new Date(l.last_followup_at || l.contacted_at).getTime();
+    return now - from >= waitDays * 86400000;
+  });
 
   for (const lead of candidates) {
     try {
-      const message = await generateFollowup(lead);
-      db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, 'followup_pending', message);
-      db.prepare(`UPDATE leads SET status = 'followup_pendiente', suggested_message = ? WHERE id = ?`).run(message, lead.id);
+      const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+      const messages = await generateFollowup(lead, campaign);
+      db.prepare(`UPDATE leads SET status = 'followup_pendiente', suggested_message = ? WHERE id = ?`).run(JSON.stringify(messages), lead.id);
       console.log(`[scheduler] follow-up generado lead ${lead.id}`);
     } catch (e) {
       console.error(`[scheduler] fallo lead ${lead.id}:`, e.message);
@@ -35,7 +35,7 @@ async function tick() {
     WHERE status IN ('mensaje_enviado','followup_pendiente')
       AND followup_count >= ?
       AND datetime(COALESCE(last_followup_at, contacted_at), '+' || ? || ' days') <= datetime('now')
-  `).run(maxF, days2);
+  `).run(maxF, days[days.length - 1]);
 }
 
 export function startScheduler() {

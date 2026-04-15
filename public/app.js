@@ -65,6 +65,11 @@ function renderKanban() {
   });
 }
 
+function previewMsg(raw) {
+  const p = parseMessages(raw);
+  if (p) return p.whatsapp || p.instagram_dm || p.email?.body || '';
+  return raw || '';
+}
 function renderTable() {
   $('#view-table tbody').innerHTML = state.leads.map(l => `
     <tr data-id="${l.id}">
@@ -74,52 +79,96 @@ function renderTable() {
       <td><span class="score ${(l.score||0)>=7?'':'low'}">${l.score ?? '?'}</span></td>
       <td>${STATUS_LABELS[l.status] || l.status}</td>
       <td>${l.contacted_at ? new Date(l.contacted_at).toLocaleDateString() : '—'}</td>
-      <td class="msg">${escapeHtml(l.suggested_message || '')}</td>
+      <td class="msg">${escapeHtml(previewMsg(l.suggested_message))}</td>
       <td>→</td>
     </tr>`).join('');
+}
+
+function parseMessages(raw) {
+  if (!raw) return null;
+  try { const o = JSON.parse(raw); if (o && typeof o === 'object' && (o.email || o.whatsapp || o.instagram_dm)) return o; } catch {}
+  return null;
 }
 
 async function openLead(id) {
   const { lead, messages } = await api(`/api/leads/${id}`);
   const msgHtml = messages.map(m => `<div class="msg-row"><div class="k">${m.kind} · ${new Date(m.sent_at).toLocaleString()}</div>${escapeHtml(m.content)}</div>`).join('') || '<div class="s">Sin mensajes aún</div>';
+  const parsed = parseMessages(lead.suggested_message);
+  const emailBody = parsed?.email?.body || '';
+  const emailSubject = parsed?.email?.subject || '';
+  const wa = parsed?.whatsapp || '';
+  const ig = parsed?.instagram_dm || '';
+  const legacy = parsed ? '' : (lead.suggested_message || '');
+
   $('.lead-detail').innerHTML = `
     <h2>${escapeHtml(lead.name || '—')} <button class="close">✕</button></h2>
-    <div class="meta">${escapeHtml(lead.company || '')} · ${PLATFORM_LABELS[lead.platform]} · ${lead.profile_url ? `<a href="${lead.profile_url}" target="_blank" style="color:#00ff88">ver perfil ↗</a>` : ''}</div>
-    <div><span class="score">${lead.score ?? '?'}</span> · <strong>${STATUS_LABELS[lead.status]}</strong></div>
+    <div class="meta">${escapeHtml(lead.company || '')} · ${PLATFORM_LABELS[lead.platform]} · ${lead.profile_url ? `<a href="${lead.profile_url}" target="_blank" style="color:#00ff88">perfil ↗</a>` : ''} ${lead.email ? `· ✉ ${escapeHtml(lead.email)}` : ''} ${lead.phone ? `· ☎ ${escapeHtml(lead.phone)}` : ''}</div>
+    <div><span class="score">${lead.score ?? '?'}</span> · <strong>${STATUS_LABELS[lead.status]}</strong> · Follow-ups: ${lead.followup_count || 0}</div>
     ${lead.score_reason ? `<div class="reason">${escapeHtml(lead.score_reason)}</div>` : ''}
-    <label>Mensaje sugerido<textarea id="d-msg">${escapeHtml(lead.suggested_message || '')}</textarea></label>
+
+    ${parsed ? `
+    <div class="tabs">
+      <button class="tab active" data-ch="whatsapp">WhatsApp</button>
+      <button class="tab" data-ch="email">Email</button>
+      <button class="tab" data-ch="instagram_dm">Instagram</button>
+    </div>
+    <div id="ch-whatsapp" class="ch-panel active"><textarea id="t-whatsapp">${escapeHtml(wa)}</textarea></div>
+    <div id="ch-email" class="ch-panel"><input id="t-email-subject" placeholder="Asunto" value="${escapeHtml(emailSubject)}"/><textarea id="t-email">${escapeHtml(emailBody)}</textarea></div>
+    <div id="ch-instagram_dm" class="ch-panel"><textarea id="t-instagram_dm">${escapeHtml(ig)}</textarea></div>
+    ` : `<label>Mensaje sugerido<textarea id="t-whatsapp">${escapeHtml(legacy)}</textarea></label>`}
+
     <label>Notas<textarea id="d-notes">${escapeHtml(lead.notes || '')}</textarea></label>
     <label>Estado<select id="d-status">${Object.entries(STATUS_LABELS).map(([v,t])=>`<option value="${v}" ${v===lead.status?'selected':''}>${t}</option>`).join('')}</select></label>
     <div class="row">
-      <button id="d-save">Guardar</button>
-      <button id="d-copy">Copiar mensaje</button>
-      <button id="d-open-dm" class="primary">Abrir chat + copiar</button>
+      <button id="d-copy">Copiar canal activo</button>
+      ${lead.profile_url ? `<button id="d-open" class="primary">Abrir perfil + copiar</button>` : ''}
       <button id="d-sent">Marcar enviado</button>
       <button id="d-followup">Generar follow-up</button>
+      <button id="d-save">Guardar cambios</button>
     </div>
-    <div class="history"><h3 style="color:#aaa;font-size:12px;text-transform:uppercase">Historial</h3>${msgHtml}</div>
+    <div class="history"><h3 style="color:#aaa;font-size:12px;text-transform:uppercase;margin-top:16px">Historial</h3>${msgHtml}</div>
   `;
   $('#modal-lead').classList.remove('hidden');
 
+  let activeCh = 'whatsapp';
+  $$('.tab').forEach(t => t.onclick = () => {
+    $$('.tab').forEach(x => x.classList.remove('active'));
+    t.classList.add('active');
+    activeCh = t.dataset.ch;
+    $$('.ch-panel').forEach(p => p.classList.remove('active'));
+    $('#ch-' + activeCh).classList.add('active');
+  });
+
+  const getChannelContent = () => {
+    if (activeCh === 'email') return `Asunto: ${$('#t-email-subject').value}\n\n${$('#t-email').value}`;
+    return $('#t-' + activeCh).value;
+  };
+  const buildMessagesJSON = () => JSON.stringify({
+    email: { subject: $('#t-email-subject')?.value || emailSubject, body: $('#t-email')?.value || emailBody },
+    whatsapp: $('#t-whatsapp')?.value || wa,
+    instagram_dm: $('#t-instagram_dm')?.value || ig
+  });
+
   $('.close').onclick = () => $('#modal-lead').classList.add('hidden');
   $('#d-save').onclick = async () => {
-    await api(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ suggested_message: $('#d-msg').value, notes: $('#d-notes').value, status: $('#d-status').value }) });
+    await api(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ suggested_message: parsed ? buildMessagesJSON() : $('#t-whatsapp').value, notes: $('#d-notes').value, status: $('#d-status').value }) });
     toast('Guardado'); $('#modal-lead').classList.add('hidden'); loadAll();
   };
-  $('#d-copy').onclick = async () => { await navigator.clipboard.writeText($('#d-msg').value); toast('Copiado'); };
-  $('#d-open-dm').onclick = async () => {
+  $('#d-copy').onclick = async () => { await navigator.clipboard.writeText(getChannelContent()); toast(`Copiado (${activeCh})`); };
+  if ($('#d-open')) $('#d-open').onclick = async () => {
     try {
-      await navigator.clipboard.writeText($('#d-msg').value);
-      if (lead.profile_url) window.open(lead.profile_url, '_blank');
-      toast('Mensaje copiado · pegá con Ctrl+V');
+      await navigator.clipboard.writeText(getChannelContent());
+      window.open(lead.profile_url, '_blank');
+      toast('Copiado · pegá con Ctrl+V');
     } catch (e) { toast('Error: ' + e.message, true); }
   };
   $('#d-sent').onclick = async () => {
-    await api(`/api/leads/${id}/mark-sent`, { method: 'POST', body: JSON.stringify({ content: $('#d-msg').value }) });
+    await api(`/api/leads/${id}/mark-sent`, { method: 'POST', body: JSON.stringify({ channel: activeCh, content: getChannelContent() }) });
     toast('Marcado como enviado'); $('#modal-lead').classList.add('hidden'); loadAll();
   };
   $('#d-followup').onclick = async () => {
-    const r = await api(`/api/leads/${id}/followup`, { method: 'POST' });
+    toast('Generando follow-up…');
+    await api(`/api/leads/${id}/followup`, { method: 'POST' });
     toast('Follow-up generado');
     openLead(id);
   };

@@ -47,17 +47,23 @@ leads.post('/score-pending', async (_req, res) => {
 leads.post('/:id/mark-sent', (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });
-  const content = req.body.content || lead.suggested_message || '';
-  db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, 'initial', content);
-  db.prepare("UPDATE leads SET status = 'mensaje_enviado', contacted_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
+  const { channel = 'whatsapp', content = '' } = req.body;
+  const isFollowup = lead.status === 'followup_pendiente' || (lead.followup_count || 0) > 0;
+  const kind = isFollowup ? `followup_${lead.followup_count + 1}_${channel}` : `initial_${channel}`;
+  db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, kind, content);
+  if (isFollowup) {
+    db.prepare("UPDATE leads SET status = 'mensaje_enviado', last_followup_at = CURRENT_TIMESTAMP, followup_count = followup_count + 1 WHERE id = ?").run(lead.id);
+  } else {
+    db.prepare("UPDATE leads SET status = 'mensaje_enviado', contacted_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
+  }
   res.json({ ok: true });
 });
 
 leads.post('/:id/followup', async (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });
-  const message = await generateFollowup(lead);
-  db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, 'followup', message);
-  db.prepare("UPDATE leads SET status = 'mensaje_enviado', last_followup_at = CURRENT_TIMESTAMP, followup_count = followup_count + 1 WHERE id = ?").run(lead.id);
-  res.json({ ok: true, message });
+  const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+  const messages = await generateFollowup(lead, campaign);
+  db.prepare("UPDATE leads SET suggested_message = ?, status = 'followup_pendiente' WHERE id = ?").run(JSON.stringify(messages), lead.id);
+  res.json({ ok: true, messages });
 });

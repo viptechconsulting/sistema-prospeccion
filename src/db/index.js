@@ -13,7 +13,7 @@ db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 db.exec(fs.readFileSync(schemaPath, 'utf8'));
 
-for (const col of [['language', "TEXT DEFAULT 'auto'"], ['service_offered', 'TEXT']]) {
+for (const col of [['language', "TEXT DEFAULT 'auto'"], ['service_offered', 'TEXT'], ['main_benefit', 'TEXT'], ['key_differential', 'TEXT']]) {
   try { db.prepare(`ALTER TABLE campaigns ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
 }
 
@@ -22,7 +22,8 @@ const defaults = {
   delay_max_seconds: '90',
   followup_days_1: '3',
   followup_days_2: '7',
-  max_followups: '2',
+  followup_days_3: '14',
+  max_followups: '3',
   min_score: '4',
   base_template: 'Hola {nombre}, vi {empresa} y me pareció interesante...',
   qualification_criteria: 'Busco owners/founders de clínicas, spas y agencias en Miami con 5-20 empleados y presencia digital activa.',

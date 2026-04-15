@@ -3,42 +3,66 @@ import { db, getSetting } from '../db/index.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const SYSTEM = `Eres un SDR experto. Calificás leads B2B del 1 al 10 y generás un primer mensaje breve, natural y personalizado (2-3 frases, sin precio, sin sonar a plantilla). Respondé SOLO JSON válido: {"score": number, "reason": string, "message": string}.`;
+const OUTREACH_SYSTEM = `Eres un experto en ventas consultivas B2B con foco en outreach en frío.
+
+REGLAS GENERALES (se aplican a todos los mensajes):
+- Tono consultivo y estratégico, nunca agresivo ni desesperado.
+- No mencionar precios ni hacer promesas exageradas.
+- Cada mensaje personalizado, que no suene a plantilla.
+- NUNCA usar frases cliché: "espero que estés bien", "me pongo en contacto para...", "quería presentarme".
+- Cada mensaje debe leerse de forma independiente (el lead puede ver solo uno).
+- El objetivo es despertar curiosidad y generar conversación, no cerrar la venta.
+- Devuelve SOLO JSON válido sin texto adicional.`;
+
+function channelSpecs(lang) {
+  return `
+- email: objeto {subject, body}. Body máx. 120 palabras. Abrir con observación específica sobre su negocio (no halago vacío). CTA suave al final.
+- whatsapp: string máx. 60 palabras. Humano, directo, sin formalismos. Cierra con pregunta abierta de bajo compromiso.
+- instagram_dm: string máx. 40 palabras. Muy casual, empático. Menciona algo específico del negocio. Sin links, emojis con moderación.
+Idioma de TODOS los mensajes: ${lang}.`;
+}
+
+function leadSummary(lead, campaign) {
+  return `DATOS DEL SERVICIO (mío):
+- Servicio ofrecido: ${campaign.service_offered || getSetting('my_company_info')}
+- Beneficio principal: ${campaign.main_benefit || 'definido por el contexto'}
+- Diferencial clave: ${campaign.key_differential || 'definido por el contexto'}
+
+DATOS DEL LEAD:
+- Nombre contacto: ${lead.name || 'N/A'}
+- Negocio: ${lead.company || lead.name || 'N/A'}
+- Plataforma: ${lead.platform}
+- URL/perfil: ${lead.profile_url || 'N/A'}
+- Resumen del negocio (datos crudos scrapeados): ${(lead.raw_data || '').slice(0, 1800)}`;
+}
+
+function resolveLang(campaign) {
+  if (campaign.language === 'es') return 'Español';
+  if (campaign.language === 'en') return 'Inglés';
+  return 'detectá el idioma según el nombre del negocio y su ubicación; en Miami podés elegir Español o Inglés según lo que parezca más natural al lead';
+}
 
 export async function scoreLead(lead, campaign = {}) {
   const criteria = getSetting('qualification_criteria');
-  const myCompany = getSetting('my_company_info');
-  const template = getSetting('base_template');
-  const langMap = { es: 'Español', en: 'Inglés', auto: 'detectá el idioma del lead según su ubicación y datos (Miami → Español o Inglés según el nombre/contenido)' };
-  const lang = langMap[campaign.language] || langMap.auto;
-  const service = campaign.service_offered ? `SERVICIO ESPECÍFICO A OFRECER EN ESTA CAMPAÑA: ${campaign.service_offered}` : '';
+  const lang = resolveLang(campaign);
 
-  const user = `MI EMPRESA: ${myCompany}
-${service}
-CRITERIO DE LEAD IDEAL: ${criteria}
-PLANTILLA BASE (guía de tono): ${template}
-IDIOMA DEL MENSAJE: ${lang}
+  const user = `${leadSummary(lead, campaign)}
 
-LEAD:
-- Nombre: ${lead.name || 'N/A'}
-- Empresa: ${lead.company || 'N/A'}
-- Plataforma: ${lead.platform}
-- URL: ${lead.profile_url || 'N/A'}
-- Email: ${lead.email || 'N/A'}
-- Datos: ${(lead.raw_data || '').slice(0, 1500)}
+CRITERIO DE LEAD IDEAL (para calificar): ${criteria}
 
-Evaluá:
-1) ¿Presencia digital activa?
-2) ¿Tamaño de empresa coincide?
-3) ¿Actividad reciente sugiere que necesitan el servicio?
-4) ¿Señales de presupuesto?
+TAREA:
+1) Calificá el lead del 1 al 10 evaluando: presencia digital activa, tamaño de empresa, señales de necesidad del servicio, señales de presupuesto. Una línea de justificación.
+2) Generá el MENSAJE 1 — Día 1 (primer contacto) en 3 canales.
 
-Devolvé JSON estricto.`;
+${channelSpecs(lang)}
+
+Devuelve JSON estricto con esta forma:
+{"score": number, "reason": string, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string}}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 600,
-    system: SYSTEM,
+    max_tokens: 1500,
+    system: OUTREACH_SYSTEM,
     messages: [{ role: 'user', content: user }]
   });
 
@@ -49,7 +73,7 @@ Devolvé JSON estricto.`;
   return {
     score: Math.max(1, Math.min(10, Number(parsed.score) || 0)),
     reason: String(parsed.reason || ''),
-    message: String(parsed.message || '')
+    messages: parsed.messages || {}
   };
 }
 
@@ -64,7 +88,7 @@ export async function scoreAllPending(limit = 50) {
       const campaign = lead.campaign_id ? campStmt.get(lead.campaign_id) : {};
       const r = await scoreLead(lead, campaign);
       const status = r.score < minScore ? 'descartado' : lead.status;
-      upd.run(r.score, r.reason, r.message, status, lead.id);
+      upd.run(r.score, r.reason, JSON.stringify(r.messages), status, lead.id);
       done++;
     } catch (e) {
       console.error('score failed', lead.id, e.message);
@@ -74,15 +98,39 @@ export async function scoreAllPending(limit = 50) {
   return { done, failed, remaining: db.prepare('SELECT COUNT(*) AS n FROM leads WHERE score IS NULL').get().n };
 }
 
-export async function generateFollowup(lead) {
-  const myCompany = getSetting('my_company_info');
-  const prior = db.prepare('SELECT content FROM messages WHERE lead_id = ? ORDER BY id ASC').all(lead.id).map(m => m.content).join('\n---\n');
+const FOLLOWUP_OBJECTIVES = [
+  { n: 1, day: 3, title: 'FOLLOW UP 1 — Día 3 (Quizás no lo vieron)', goal: 'Confirmar que llegó el mensaje, sin presionar.', limits: 'EMAIL: máx 80 palabras, como respuesta al hilo anterior, reafirma idea principal en una oración. WHATSAPP: máx 40 palabras, muy breve. INSTAGRAM_DM: máx 25 palabras, recordatorio amable.' },
+  { n: 2, day: 7, title: 'FOLLOW UP 2 — Día 7 (Agregar valor nuevo)', goal: 'Dar una razón nueva para responder. Simulá haber hecho un hallazgo concreto plausible sobre su negocio basado en el resumen del lead y el servicio.', limits: 'EMAIL: máx 100 palabras, menciona el hallazgo específico, CTA a mostrar el hallazgo. WHATSAPP: máx 50 palabras, directo al hallazgo + pregunta de 5 min. INSTAGRAM_DM: máx 30 palabras, hallazgo + pregunta.' },
+  { n: 3, day: 14, title: 'FOLLOW UP 3 — Día 14 (Cierre elegante)', goal: 'Cerrar el ciclo sin quemar el puente. Dejar puerta abierta.', limits: 'EMAIL: máx 80 palabras, cálido, indica que es el último mensaje, sin presión. WHATSAPP: máx 35 palabras, cordial sin drama. INSTAGRAM_DM: máx 20 palabras, una frase de cierre amigable.' }
+];
+
+export async function generateFollowup(lead, campaign = {}) {
+  const priorMsgs = db.prepare('SELECT kind, content FROM messages WHERE lead_id = ? ORDER BY id ASC').all(lead.id);
+  const step = FOLLOWUP_OBJECTIVES[Math.min(lead.followup_count || 0, FOLLOWUP_OBJECTIVES.length - 1)];
+  const lang = resolveLang(campaign);
+  const priorText = priorMsgs.map(m => `[${m.kind}] ${m.content}`).join('\n---\n') || '(sin mensajes previos)';
+
+  const user = `${leadSummary(lead, campaign)}
+
+MENSAJES PREVIOS ENVIADOS A ESTE LEAD:
+${priorText}
+
+TAREA: Generá el ${step.title}.
+OBJETIVO: ${step.goal}
+LÍMITES POR CANAL: ${step.limits}
+Idioma: ${lang}.
+
+Devuelve JSON estricto:
+{"messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string}}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 300,
-    system: 'Generás follow-ups breves (1-2 frases), amigables, nunca insistentes. Devolvé SOLO el texto del mensaje, sin comillas.',
-    messages: [{ role: 'user', content: `Mi empresa: ${myCompany}\nLead: ${lead.name} (${lead.company})\nMensajes previos:\n${prior}\n\nEscribí un follow-up suave diferente al anterior.` }]
+    max_tokens: 1200,
+    system: OUTREACH_SYSTEM,
+    messages: [{ role: 'user', content: user }]
   });
-  return resp.content.find(c => c.type === 'text')?.text?.trim() || '';
+  const text = resp.content.find(c => c.type === 'text')?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Claude no devolvió JSON');
+  return JSON.parse(match[0]).messages || {};
 }
