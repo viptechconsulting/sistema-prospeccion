@@ -16,9 +16,9 @@ REGLAS GENERALES (se aplican a todos los mensajes):
 
 function channelSpecs(lang) {
   return `
-- email: objeto {subject, body}. Body máx. 120 palabras. Abrir con observación específica sobre su negocio (no halago vacío). CTA suave al final.
-- whatsapp: string máx. 60 palabras. Humano, directo, sin formalismos. Cierra con pregunta abierta de bajo compromiso.
-- instagram_dm: string máx. 40 palabras. Muy casual, empático. Menciona algo específico del negocio. Sin links, emojis con moderación.
+- email: objeto {subject, body}. Body máx. 120 palabras. Abrir con observación ESPECÍFICA y verificable del negocio (ej: "sus 483 reseñas", "tu ubicación en Brickell", "el servicio de PRP que ofrecen"). No halagos genéricos tipo "vi que están fuertes". CTA suave al final.
+- whatsapp: string máx. 60 palabras. Humano, directo, sin formalismos. OBLIGATORIO incluir un dato concreto y verificable del negocio en la primera frase. Cierra con pregunta abierta.
+- instagram_dm: string máx. 40 palabras. Muy casual, empático. OBLIGATORIO mencionar un detalle concreto del negocio (nombre, ubicación específica, número de reseñas/followers, servicio que ofrecen, algo de su bio). Prohibido genérico tipo "están fuertes" o "tienen buena presencia". Sin links, máximo 1 emoji.
 Idioma de TODOS los mensajes: ${lang}.`;
 }
 
