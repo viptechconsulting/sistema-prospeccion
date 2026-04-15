@@ -3,7 +3,8 @@ const BASE = 'https://api.apify.com/v2';
 const ACTORS = {
   google_maps: 'compass~crawler-google-places',
   linkedin: 'bebity~linkedin-premium-actor',
-  instagram: 'apify~instagram-scraper'
+  instagram: 'apify~instagram-scraper',
+  meta_ads: 'curious_coder~facebook-ads-library-scraper'
 };
 
 function buildInput(platform, { niche, location, keywords, maxLeads }) {
@@ -32,6 +33,14 @@ function buildInput(platform, { niche, location, keywords, maxLeads }) {
         resultsType: 'details',
         resultsLimit: maxLeads,
         addParentData: false
+      };
+    case 'meta_ads':
+      return {
+        urls: [{ url: `https://www.facebook.com/ads/library/?active_status=active&ad_type=all&country=US&q=${encodeURIComponent(search)}&search_type=keyword_unordered&media_type=all` }],
+        count: maxLeads,
+        scrapeAdDetails: true,
+        scrapePageAds: { activeStatus: 'all' },
+        period: ''
       };
     default:
       throw new Error('platform desconocida');
@@ -91,5 +100,21 @@ export function normalizeLead(platform, raw) {
         email: raw.businessEmail || raw.publicEmail,
         phone: raw.businessPhoneNumber
       };
+    case 'meta_ads': {
+      const pageName = raw.page_name || raw.pageName || raw.advertiser_name || raw.advertiserName;
+      const pageId = raw.page_id || raw.pageId;
+      const cta = raw.cta_type || raw.ctaType || raw.cta_text;
+      const body = raw.ad_creative_body || raw.body || raw.snapshot?.body?.text || '';
+      const link = raw.link_url || raw.linkUrl || raw.snapshot?.link_url;
+      return {
+        name: pageName,
+        company: pageName,
+        profile_url: pageId ? `https://www.facebook.com/${pageId}` : (raw.permalink_url || raw.url),
+        website: link,
+        email: null,
+        phone: null,
+        // Keep ad details inside raw_data for scoring prompt
+      };
+    }
   }
 }

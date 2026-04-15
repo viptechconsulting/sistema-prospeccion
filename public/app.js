@@ -9,7 +9,7 @@ const STATUS_LABELS = {
   descartado: 'Descartado',
   respondio: 'Respondió'
 };
-const PLATFORM_LABELS = { google_maps: 'Google Maps', linkedin: 'LinkedIn', instagram: 'Instagram' };
+const PLATFORM_LABELS = { google_maps: 'Google Maps', linkedin: 'LinkedIn', instagram: 'Instagram', meta_ads: 'Meta Ads' };
 
 const state = { leads: [], filters: {} };
 
