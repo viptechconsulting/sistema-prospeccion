@@ -200,6 +200,7 @@ $('#modal-campaign form').onsubmit = async (e) => {
 
 // click leads
 document.addEventListener('click', (e) => {
+  if (e.target.closest('.modal .card')) return;
   const el = e.target.closest('[data-id]');
   if (el && (el.classList.contains('card-lead') || el.tagName === 'TR')) openLead(el.dataset.id);
 });
