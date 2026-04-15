@@ -16,6 +16,12 @@ db.exec(fs.readFileSync(schemaPath, 'utf8'));
 for (const col of [['language', "TEXT DEFAULT 'auto'"], ['service_offered', 'TEXT'], ['main_benefit', 'TEXT'], ['key_differential', 'TEXT']]) {
   try { db.prepare(`ALTER TABLE campaigns ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
 }
+for (const col of [['name_campaign', 'TEXT']]) {
+  try { db.prepare(`ALTER TABLE campaigns ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
+}
+for (const col of [['contact_person', 'TEXT'], ['website', 'TEXT'], ['instagram_url', 'TEXT'], ['gmb_url', 'TEXT']]) {
+  try { db.prepare(`ALTER TABLE leads ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
+}
 
 const defaults = {
   delay_min_seconds: '30',

@@ -42,9 +42,30 @@ async function loadLeads() {
   if (state.filters.platform) q.set('platform', state.filters.platform);
   if (state.filters.status) q.set('status', state.filters.status);
   if (state.filters.minScore) q.set('minScore', state.filters.minScore);
+  if (state.filters.campaignId) q.set('campaignId', state.filters.campaignId);
   state.leads = await api('/api/leads?' + q);
   renderKanban();
   renderTable();
+}
+
+async function loadCampaigns() {
+  const c = await api('/api/campaigns');
+  state.campaigns = c;
+  const sel = $('#f-campaign');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Todas las campañas</option>' + c.map(x => `<option value="${x.id}">${escapeHtml(x.niche || 'campaña ' + x.id)} · ${PLATFORM_LABELS[x.platform] || x.platform}</option>`).join('');
+  sel.value = current;
+  $('#campaigns-tbody').innerHTML = c.map(x => `
+    <tr>
+      <td>${escapeHtml(x.niche || '—')}</td>
+      <td>${PLATFORM_LABELS[x.platform] || x.platform}</td>
+      <td>${escapeHtml(x.location || '')}</td>
+      <td>${escapeHtml(x.service_offered || '').slice(0, 60)}</td>
+      <td>${state.leads.filter(l => l.campaign_id === x.id).length}</td>
+      <td>${escapeHtml((x.status || '').slice(0, 40))}</td>
+      <td>${new Date(x.created_at).toLocaleDateString()}</td>
+      <td><button class="btn-del-camp" data-id="${x.id}" style="background:#3a1a1a;border-color:#552">🗑</button></td>
+    </tr>`).join('');
 }
 
 function leadCard(l) {
@@ -101,10 +122,22 @@ async function openLead(id) {
   const loom = parsed?.loom_script || '';
   const legacy = parsed ? '' : (lead.suggested_message || '');
 
+  const contactCard = `
+    <div class="contact-card">
+      <div class="cc-row"><span class="cc-k">Nombre</span><span>${escapeHtml(lead.name || '—')}</span></div>
+      <div class="cc-row"><span class="cc-k">Contacto</span><span>${escapeHtml(lead.contact_person || '—')}</span></div>
+      <div class="cc-row"><span class="cc-k">Teléfono</span><span>${lead.phone ? escapeHtml(lead.phone) : '—'}</span></div>
+      <div class="cc-row"><span class="cc-k">Email</span><span>${lead.email ? escapeHtml(lead.email) : '—'}</span></div>
+      <div class="cc-row"><span class="cc-k">Website</span><span>${lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" style="color:#00ff88">${escapeHtml(lead.website)}</a>` : '—'}</span></div>
+      <div class="cc-row"><span class="cc-k">Instagram</span><span>${lead.instagram_url ? `<a href="${escapeHtml(lead.instagram_url)}" target="_blank" style="color:#00ff88">${escapeHtml(lead.instagram_url)}</a>` : '—'}</span></div>
+      <div class="cc-row"><span class="cc-k">Google Business</span><span>${lead.gmb_url ? `<a href="${escapeHtml(lead.gmb_url)}" target="_blank" style="color:#00ff88">ver perfil ↗</a>` : '—'}</span></div>
+    </div>`;
+
   $('.lead-detail').innerHTML = `
     <h2>${escapeHtml(lead.name || '—')} <button class="close">✕</button></h2>
-    <div class="meta">${escapeHtml(lead.company || '')} · ${PLATFORM_LABELS[lead.platform]} · ${lead.profile_url ? `<a href="${lead.profile_url}" target="_blank" style="color:#00ff88">perfil ↗</a>` : ''} ${lead.email ? `· ✉ ${escapeHtml(lead.email)}` : ''} ${lead.phone ? `· ☎ ${escapeHtml(lead.phone)}` : ''}</div>
+    <div class="meta">${escapeHtml(lead.company || '')} · ${PLATFORM_LABELS[lead.platform]}</div>
     <div><span class="score">${lead.score ?? '?'}</span> · <strong>${STATUS_LABELS[lead.status]}</strong> · Follow-ups: ${lead.followup_count || 0}</div>
+    ${contactCard}
     ${lead.score_reason ? `<div class="reason">${escapeHtml(lead.score_reason)}</div>` : ''}
 
     ${parsed ? `
@@ -128,6 +161,7 @@ async function openLead(id) {
       <button id="d-sent">Marcar enviado</button>
       <button id="d-followup">Generar follow-up</button>
       <button id="d-save">Guardar cambios</button>
+      <button id="d-delete" style="background:#3a1a1a;border-color:#552">🗑 Borrar lead</button>
     </div>
     <div class="history"><h3 style="color:#aaa;font-size:12px;text-transform:uppercase;margin-top:16px">Historial</h3>${msgHtml}</div>
   `;
@@ -176,6 +210,11 @@ async function openLead(id) {
     toast('Follow-up generado');
     openLead(id);
   };
+  $('#d-delete').onclick = async () => {
+    if (!confirm('¿Borrar este lead?')) return;
+    await api(`/api/leads/${id}`, { method: 'DELETE' });
+    toast('Lead borrado'); $('#modal-lead').classList.add('hidden'); loadAll();
+  };
 }
 
 async function loadSettings() {
@@ -223,8 +262,8 @@ $$('nav button[data-view]').forEach(b => b.onclick = () => {
 });
 
 // filters
-['f-platform', 'f-status', 'f-score'].forEach(id => $('#' + id).addEventListener('change', () => {
-  state.filters = { platform: $('#f-platform').value, status: $('#f-status').value, minScore: $('#f-score').value };
+['f-platform', 'f-status', 'f-score', 'f-campaign'].forEach(id => $('#' + id).addEventListener('change', () => {
+  state.filters = { platform: $('#f-platform').value, status: $('#f-status').value, minScore: $('#f-score').value, campaignId: $('#f-campaign').value };
   loadLeads();
 }));
 $('#btn-refresh').onclick = loadAll;
@@ -260,6 +299,19 @@ document.addEventListener('click', (e) => {
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-async function loadAll() { await Promise.all([loadMetrics(), loadLeads()]); }
+async function loadAll() {
+  await Promise.all([loadMetrics(), loadLeads()]);
+  await loadCampaigns();
+}
 loadAll();
+
+document.addEventListener('click', async (e) => {
+  const del = e.target.closest('.btn-del-camp');
+  if (del) {
+    e.stopPropagation();
+    if (!confirm('¿Borrar campaña y todos sus leads?')) return;
+    await api('/api/campaigns/' + del.dataset.id, { method: 'DELETE' });
+    toast('Campaña borrada'); loadAll();
+  }
+});
 setInterval(loadMetrics, 15000);

@@ -23,13 +23,13 @@ campaigns.post('/', async (req, res) => {
     try {
       const items = await runActor(platform, { niche, location, keywords, maxLeads });
       const insert = db.prepare(`INSERT OR IGNORE INTO leads
-        (campaign_id, platform, name, company, profile_url, email, phone, raw_data)
-        VALUES (?,?,?,?,?,?,?,?)`);
+        (campaign_id, platform, name, company, contact_person, profile_url, website, instagram_url, gmb_url, email, phone, raw_data)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
       const tx = db.transaction((arr) => {
         for (const r of arr) {
           const n = normalizeLead(platform, r);
           if (!n?.profile_url && !n?.email) continue;
-          insert.run(campaignId, platform, n.name, n.company, n.profile_url, n.email, n.phone, JSON.stringify(r));
+          insert.run(campaignId, platform, n.name, n.company, n.contact_person, n.profile_url, n.website, n.instagram_url, n.gmb_url, n.email, n.phone, JSON.stringify(r));
         }
       });
       tx(items);
@@ -44,4 +44,11 @@ campaigns.post('/', async (req, res) => {
 campaigns.get('/:id/leads', (req, res) => {
   const rows = db.prepare('SELECT * FROM leads WHERE campaign_id = ? ORDER BY score DESC NULLS LAST, id DESC').all(req.params.id);
   res.json(rows);
+});
+
+campaigns.delete('/:id', (req, res) => {
+  db.prepare('DELETE FROM messages WHERE lead_id IN (SELECT id FROM leads WHERE campaign_id = ?)').run(req.params.id);
+  db.prepare('DELETE FROM leads WHERE campaign_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM campaigns WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
 });

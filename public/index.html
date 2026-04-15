@@ -12,6 +12,7 @@
   <nav>
     <button data-view="kanban" class="active">Kanban</button>
     <button data-view="table">Tabla</button>
+    <button data-view="campaigns">Campañas</button>
     <button data-view="settings">Settings</button>
     <button id="btn-new" class="primary">+ Nueva campaña</button>
   </nav>
@@ -20,6 +21,7 @@
 <section id="metrics" class="metrics"></section>
 
 <section id="filters" class="filters">
+  <select id="f-campaign"><option value="">Todas las campañas</option></select>
   <select id="f-platform"><option value="">Todas las plataformas</option><option value="google_maps">Google Maps</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option></select>
   <select id="f-status"><option value="">Todos los estados</option><option value="por_contactar">Por contactar</option><option value="mensaje_enviado">Mensaje enviado</option><option value="followup_pendiente">Follow-up pendiente</option><option value="reunion_agendada">Reunión agendada</option><option value="descartado">Descartado</option></select>
   <input id="f-score" type="number" min="1" max="10" placeholder="Score min"/>
@@ -41,6 +43,10 @@
     <thead><tr><th>Nombre</th><th>Empresa</th><th>Plataforma</th><th>Score</th><th>Estado</th><th>Contactado</th><th>Mensaje</th><th></th></tr></thead>
     <tbody></tbody>
   </table>
+</main>
+
+<main id="view-campaigns" class="view">
+  <table class="leads"><thead><tr><th>Nombre / Nicho</th><th>Plataforma</th><th>Ubicación</th><th>Servicio</th><th>Leads</th><th>Status</th><th>Creada</th><th></th></tr></thead><tbody id="campaigns-tbody"></tbody></table>
 </main>
 
 <main id="view-settings" class="view">

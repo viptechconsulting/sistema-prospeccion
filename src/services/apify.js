@@ -56,10 +56,14 @@ export function normalizeLead(platform, raw) {
     case 'google_maps': {
       const emails = raw.emails || raw.contactDetails?.emails || raw.additionalInfo?.emails;
       const phones = raw.phones || raw.contactDetails?.phones;
+      const instagrams = raw.instagrams || raw.contactDetails?.instagrams;
       return {
         name: raw.title || raw.name,
         company: raw.title,
-        profile_url: raw.url || raw.website || raw.placeId,
+        profile_url: raw.url || raw.placeId,
+        website: raw.website,
+        gmb_url: raw.url,
+        instagram_url: Array.isArray(instagrams) ? instagrams[0] : instagrams,
         email: Array.isArray(emails) ? emails[0] : (emails || raw.email),
         phone: raw.phone || raw.phoneUnformatted || (Array.isArray(phones) ? phones[0] : null)
       };
@@ -68,7 +72,9 @@ export function normalizeLead(platform, raw) {
       return {
         name: raw.fullName || raw.name,
         company: raw.companyName || raw.currentCompany,
+        contact_person: raw.fullName,
         profile_url: raw.profileUrl || raw.url,
+        website: raw.website,
         email: raw.email,
         phone: raw.phone
       };
@@ -77,6 +83,8 @@ export function normalizeLead(platform, raw) {
         name: raw.fullName || raw.username,
         company: raw.businessCategoryName || raw.category,
         profile_url: raw.url || `https://instagram.com/${raw.username}`,
+        instagram_url: raw.url || `https://instagram.com/${raw.username}`,
+        website: raw.externalUrl || raw.website,
         email: raw.businessEmail || raw.publicEmail,
         phone: raw.businessPhoneNumber
       };
