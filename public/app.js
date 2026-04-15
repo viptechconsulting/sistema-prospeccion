@@ -161,6 +161,8 @@ async function openLead(id) {
       <button id="d-sent">Marcar enviado</button>
       <button id="d-followup">Generar follow-up</button>
       <button id="d-save">Guardar cambios</button>
+      <button id="d-translate-es">🌐 ES</button>
+      <button id="d-translate-en">🌐 EN</button>
       <button id="d-delete" style="background:#3a1a1a;border-color:#552">🗑 Borrar lead</button>
     </div>
     <div class="history"><h3 style="color:#aaa;font-size:12px;text-transform:uppercase;margin-top:16px">Historial</h3>${msgHtml}</div>
@@ -215,6 +217,14 @@ async function openLead(id) {
     await api(`/api/leads/${id}`, { method: 'DELETE' });
     toast('Lead borrado'); $('#modal-lead').classList.add('hidden'); loadAll();
   };
+  const doTranslate = async (target) => {
+    toast('Traduciendo…');
+    await api(`/api/leads/${id}/translate`, { method: 'POST', body: JSON.stringify({ target }) });
+    toast(target === 'en' ? 'Traducido a inglés' : 'Traducido a español');
+    openLead(id);
+  };
+  $('#d-translate-es').onclick = () => doTranslate('es');
+  $('#d-translate-en').onclick = () => doTranslate('en');
 }
 
 async function loadSettings() {

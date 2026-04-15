@@ -1,6 +1,6 @@
 import express from 'express';
 import { db } from '../db/index.js';
-import { scoreAllPending, generateFollowup } from '../services/scoring.js';
+import { scoreAllPending, generateFollowup, translateMessages } from '../services/scoring.js';
 
 export const leads = express.Router();
 
@@ -64,6 +64,17 @@ leads.post('/:id/mark-sent', (req, res) => {
     db.prepare("UPDATE leads SET status = 'mensaje_enviado', contacted_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
   }
   res.json({ ok: true });
+});
+
+leads.post('/:id/translate', async (req, res) => {
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'not found' });
+  const target = req.body.target === 'en' ? 'en' : 'es';
+  let current;
+  try { current = JSON.parse(lead.suggested_message); } catch { current = { whatsapp: lead.suggested_message || '' }; }
+  const translated = await translateMessages(current, target);
+  db.prepare('UPDATE leads SET suggested_message = ? WHERE id = ?').run(JSON.stringify(translated), lead.id);
+  res.json({ ok: true, messages: translated });
 });
 
 leads.post('/:id/followup', async (req, res) => {

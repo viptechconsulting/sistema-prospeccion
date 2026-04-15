@@ -105,6 +105,20 @@ const FOLLOWUP_OBJECTIVES = [
   { n: 3, day: 14, title: 'FOLLOW UP 3 — Día 14 (Cierre elegante)', goal: 'Cerrar el ciclo sin quemar el puente. Dejar puerta abierta.', limits: 'EMAIL: máx 80 palabras, cálido, indica que es el último mensaje, sin presión. WHATSAPP: máx 35 palabras, cordial sin drama. INSTAGRAM_DM: máx 20 palabras, una frase de cierre amigable. LOOM_SCRIPT: guion corto de 1 min (~120-180 palabras), cierre cálido sin presión, puerta abierta.' }
 ];
 
+export async function translateMessages(messages, targetLang) {
+  const langName = targetLang === 'en' ? 'Inglés' : 'Español';
+  const resp = await client.messages.create({
+    model: 'claude-haiku-4-5-20251001',
+    max_tokens: 1500,
+    system: `Traducís mensajes de outreach B2B manteniendo el tono consultivo, natural y casual. Mantenés nombres propios y marcadores como [HOOK 0:00-0:15]. Devolvés SOLO JSON con la misma estructura.`,
+    messages: [{ role: 'user', content: `Traducí los siguientes mensajes a ${langName}. Mantené la estructura JSON exacta:\n\n${JSON.stringify(messages, null, 2)}` }]
+  });
+  const text = resp.content.find(c => c.type === 'text')?.text || '';
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('Claude no devolvió JSON');
+  return JSON.parse(match[0]);
+}
+
 export async function generateFollowup(lead, campaign = {}) {
   const priorMsgs = db.prepare('SELECT kind, content FROM messages WHERE lead_id = ? ORDER BY id ASC').all(lead.id);
   const step = FOLLOWUP_OBJECTIVES[Math.min(lead.followup_count || 0, FOLLOWUP_OBJECTIVES.length - 1)];
