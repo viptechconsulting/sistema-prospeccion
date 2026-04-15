@@ -3,7 +3,7 @@ const BASE = 'https://api.apify.com/v2';
 const ACTORS = {
   google_maps: 'compass~crawler-google-places',
   linkedin: 'bebity~linkedin-premium-actor',
-  instagram: 'apify~instagram-profile-scraper'
+  instagram: 'apify~instagram-scraper'
 };
 
 function buildInput(platform, { niche, location, keywords, maxLeads }) {
@@ -26,9 +26,12 @@ function buildInput(platform, { niche, location, keywords, maxLeads }) {
       };
     case 'instagram':
       return {
-        search,
+        search: [search, location].filter(Boolean).join(' '),
+        searchType: 'user',
+        searchLimit: maxLeads,
+        resultsType: 'details',
         resultsLimit: maxLeads,
-        resultsType: 'details'
+        addParentData: false
       };
     default:
       throw new Error('platform desconocida');
