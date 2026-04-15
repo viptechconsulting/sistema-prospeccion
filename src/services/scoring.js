@@ -68,9 +68,7 @@ Devuelve JSON estricto con esta forma:
   });
 
   const text = resp.content.find(c => c.type === 'text')?.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude no devolvió JSON');
-  const parsed = JSON.parse(match[0]);
+  const parsed = safeJSON(text);
   return {
     score: Math.max(1, Math.min(10, Number(parsed.score) || 0)),
     reason: String(parsed.reason || ''),
@@ -114,9 +112,25 @@ export async function translateMessages(messages, targetLang) {
     messages: [{ role: 'user', content: `Traducí los siguientes mensajes a ${langName}. Mantené la estructura JSON exacta:\n\n${JSON.stringify(messages, null, 2)}` }]
   });
   const text = resp.content.find(c => c.type === 'text')?.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude no devolvió JSON');
-  return JSON.parse(match[0]);
+  return safeJSON(text);
+}
+
+function safeJSON(text) {
+  const fenced = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (fenced) { try { return JSON.parse(fenced[1]); } catch {} }
+  const first = text.indexOf('{');
+  if (first < 0) throw new Error('Claude no devolvió JSON');
+  let depth = 0, inStr = false, esc = false;
+  for (let i = first; i < text.length; i++) {
+    const c = text[i];
+    if (esc) { esc = false; continue; }
+    if (c === '\\') { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { return JSON.parse(text.slice(first, i + 1)); } }
+  }
+  throw new Error('JSON incompleto');
 }
 
 export async function generateFollowup(lead, campaign = {}) {
@@ -145,7 +159,5 @@ Devuelve JSON estricto:
     messages: [{ role: 'user', content: user }]
   });
   const text = resp.content.find(c => c.type === 'text')?.text || '';
-  const match = text.match(/\{[\s\S]*\}/);
-  if (!match) throw new Error('Claude no devolvió JSON');
-  return JSON.parse(match[0]).messages || {};
+  return safeJSON(text).messages || {};
 }

@@ -19,10 +19,22 @@ app.get('/api/health', (_req, res) => {
   const count = db.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
   res.json({ ok: true, leads: count });
 });
+app.use((req, res, next) => {
+  const orig = res.json.bind(res);
+  next();
+});
+process.on('unhandledRejection', (err) => console.error('UNHANDLED', err));
+process.on('uncaughtException', (err) => console.error('UNCAUGHT', err));
+
 app.use('/api/campaigns', campaigns);
 app.use('/api/leads', leads);
 app.use('/api/settings', settings);
 app.use('/api/automation', automation);
+
+app.use((err, req, res, next) => {
+  console.error('API error', err);
+  res.status(500).json({ error: err.message });
+});
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
