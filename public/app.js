@@ -64,7 +64,7 @@ async function loadCampaigns() {
       <td>${state.leads.filter(l => l.campaign_id === x.id).length}</td>
       <td>${escapeHtml((x.status || '').slice(0, 40))}</td>
       <td>${new Date(x.created_at).toLocaleDateString()}</td>
-      <td><button class="btn-del-camp" data-id="${x.id}" style="background:#3a1a1a;border-color:#552">🗑</button></td>
+      <td><button class="btn-dup-camp" data-id="${x.id}">📋 Duplicar</button> <button class="btn-del-camp" data-id="${x.id}" style="background:#3a1a1a;border-color:#552">🗑</button></td>
     </tr>`).join('');
 }
 
@@ -285,7 +285,7 @@ $('#btn-score').onclick = async () => {
 };
 
 // new campaign
-$('#btn-new').onclick = () => $('#modal-campaign').classList.remove('hidden');
+$('#btn-new').onclick = () => openCampaignModal();
 $('#modal-campaign .cancel').onclick = () => $('#modal-campaign').classList.add('hidden');
 $('#modal-campaign form').onsubmit = async (e) => {
   e.preventDefault();
@@ -322,6 +322,24 @@ document.addEventListener('click', async (e) => {
     if (!confirm('¿Borrar campaña y todos sus leads?')) return;
     await api('/api/campaigns/' + del.dataset.id, { method: 'DELETE' });
     toast('Campaña borrada'); loadAll();
+    return;
+  }
+  const dup = e.target.closest('.btn-dup-camp');
+  if (dup) {
+    e.stopPropagation();
+    const src = (state.campaigns || []).find(c => c.id == dup.dataset.id);
+    if (!src) return;
+    openCampaignModal(src);
   }
 });
+
+function openCampaignModal(prefill = {}) {
+  const form = $('#modal-campaign form');
+  form.reset();
+  const map = { platform:'platform', niche:'niche', location:'location', keywords:'keywords', language:'language', service_offered:'serviceOffered', main_benefit:'mainBenefit', key_differential:'keyDifferential', max_leads:'maxLeads' };
+  for (const [src, field] of Object.entries(map)) {
+    if (prefill[src] != null && form.elements[field]) form.elements[field].value = prefill[src];
+  }
+  $('#modal-campaign').classList.remove('hidden');
+}
 setInterval(loadMetrics, 15000);
