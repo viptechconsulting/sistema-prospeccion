@@ -1,7 +1,7 @@
 const BASE = 'https://api.apify.com/v2';
 
 const ACTORS = {
-  google_maps: 'apify~google-maps-scraper',
+  google_maps: 'compass~crawler-google-places',
   linkedin: 'bebity~linkedin-premium-actor',
   instagram: 'apify~instagram-profile-scraper'
 };
