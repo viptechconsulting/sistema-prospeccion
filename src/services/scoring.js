@@ -6,13 +6,18 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const OUTREACH_SYSTEM = `Eres un experto en ventas consultivas B2B con foco en outreach en frío.
 
-REGLAS GENERALES (se aplican a todos los mensajes):
+REGLA #1 (INQUEBRANTABLE) — VERACIDAD:
+- SOLO podés mencionar hechos explícitamente presentes en los DATOS DEL LEAD que te paso.
+- PROHIBIDO inventar: campañas que no están listadas, CTAs que no figuran, porcentajes inventados ("30-40% de inquiries"), volúmenes ("X pacientes"), features específicas ("Book now clicks"), canales que no aparecen en los datos.
+- Si no tenés un dato concreto, usá observaciones generales y verificables del sector/rubro en vez de inventar cifras.
+- Si el rating, reviews, patrón positivo/negativo, CTA o ads no están en los datos: NO los menciones como si los conocieras.
+- Mejor un mensaje corto y honesto que uno largo y fabricado.
+
+REGLAS GENERALES:
 - Tono consultivo y estratégico, nunca agresivo ni desesperado.
-- No mencionar precios ni hacer promesas exageradas.
-- Cada mensaje personalizado, que no suene a plantilla.
-- NUNCA usar frases cliché: "espero que estés bien", "me pongo en contacto para...", "quería presentarme".
-- Cada mensaje debe leerse de forma independiente (el lead puede ver solo uno).
-- El objetivo es despertar curiosidad y generar conversación, no cerrar la venta.
+- No mencionar precios ni hacer promesas exageradas (nada de "60 días o refund", "reducción del 35%", "<5 segundos 24/7" a menos que esté literalmente en los datos del servicio que me das).
+- NUNCA frases cliché: "espero que estés bien", "me pongo en contacto para...", "quería presentarme".
+- El objetivo es curiosidad + conversación, no cerrar venta.
 - Devuelve SOLO JSON válido sin texto adicional.`;
 
 function channelSpecs(lang) {
@@ -64,8 +69,14 @@ CRITERIO DE LEAD IDEAL (para calificar): ${criteria}
 
 TAREA:
 1) Calificá el lead del 1 al 10 (presencia digital, tamaño, señales de necesidad, presupuesto).
-2) Si hay reviews: identificá EL patrón positivo más repetido y LA queja/dolor más repetido. Frases cortas (máx 12 palabras c/u). Si hay menos de 3 reviews devolvé null en esos campos.
-3) Generá el MENSAJE 1 — Día 1 en 4 canales. Cuando exista queja recurrente, tejela SUTILMENTE en el mensaje (como observación, no como ataque). Cuando el rating sea ≤4.3 o el negocio no tenga website, mencionalo como señal del dolor sin juzgar.
+2) Si hay 3+ reviews en los datos: identificá EL patrón positivo más repetido y LA queja más repetida (frases cortas ≤12 palabras). Si hay menos de 3 reviews: devolvé null en esos campos.
+3) Generá el MENSAJE 1 — Día 1 en 4 canales. REGLAS CLAVE para este lead:
+   - Primera frase: SOLO datos verificables (nombre del negocio, rating real, # reviews reales, website o falta de ella, ubicación, servicios listados). NADA inventado.
+   - Si hay queja recurrente real → tejela con delicadeza como observación.
+   - Si rating real ≤4.3 → mencioná con tacto.
+   - Si NO hay website → mencioná como oportunidad.
+   - Si NO hay reviews ni ads data específica → usá observación genérica del sector/ubicación SIN inventar cifras ni detalles.
+   - NUNCA inventes campañas, CTAs, porcentajes, cifras de conversión o features del negocio.
 
 ${channelSpecs(lang)}
 
