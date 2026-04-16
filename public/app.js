@@ -319,7 +319,7 @@ $('#modal-campaign form').onsubmit = async (e) => {
     await api('/api/campaigns', { method: 'POST', body: JSON.stringify(data) });
     toast('Campaña lanzada · se ejecuta en background');
     $('#modal-campaign').classList.add('hidden');
-    setTimeout(loadAll, 2000);
+    loadAll();
   } catch (err) { toast(err.message, true); }
 };
 
