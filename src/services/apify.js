@@ -46,11 +46,12 @@ function buildInput(platform, { niche, location, keywords, maxLeads }) {
     case 'google_serp':
       return {
         queries: `${search} ${location || ''}`.trim(),
-        resultsPerPage: 100,
-        maxPagesPerQuery: 1,
+        resultsPerPage: 50,
+        maxPagesPerQuery: Math.max(3, Math.ceil(maxLeads / 8)),
         countryCode: 'us',
         languageCode: 'en',
-        mobileResults: false
+        mobileResults: false,
+        saveHtml: false
       };
     default:
       throw new Error('platform desconocida');

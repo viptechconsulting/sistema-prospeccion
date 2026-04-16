@@ -23,9 +23,12 @@ campaigns.post('/', async (req, res) => {
     try {
       let items = await runActor(platform, { niche, location, keywords, maxLeads });
       if (platform === 'google_serp') {
-        const first = items[0];
-        const organic = first?.organicResults || first?.results || items;
-        items = organic.filter(r => (r.position || 0) >= serpStartPosition).slice(0, maxLeads);
+        const all = [];
+        for (const page of items) {
+          const organic = page.organicResults || page.results || [];
+          all.push(...organic);
+        }
+        items = all.filter(r => (r.position || 0) >= Number(serpStartPosition)).slice(0, maxLeads);
       }
       const insert = db.prepare(`INSERT OR IGNORE INTO leads
         (campaign_id, platform, name, company, contact_person, profile_url, website, instagram_url, gmb_url, email, phone, rating, review_count, raw_data)
