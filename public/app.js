@@ -365,4 +365,5 @@ function openCampaignModal(prefill = {}) {
   }
   $('#modal-campaign').classList.remove('hidden');
 }
-setInterval(loadMetrics, 15000);
+function anyRunning() { return (state.campaigns || []).some(c => c.status === 'running'); }
+setInterval(() => { anyRunning() ? loadAll() : loadMetrics(); }, 4000);
