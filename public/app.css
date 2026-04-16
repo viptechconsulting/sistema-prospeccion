@@ -76,7 +76,38 @@ input:focus, select:focus, textarea:focus { outline:none; border-color:#00ff88; 
 .toast.err { background:#ff4444; color:#fff; }
 
 @media (max-width:900px) {
-  .kanban { grid-template-columns:1fr; }
+  .kanban { grid-template-columns:repeat(2, 1fr); }
   header { flex-direction:column; gap:10px; align-items:stretch; }
+  header h1 { font-size:16px; text-align:center; }
+  nav { justify-content:center; }
+  .metrics { grid-template-columns:repeat(2, 1fr); padding:12px 14px; }
+  .filters { padding:0 14px 12px; }
+  .filters select, .filters input { min-width:0; flex:1; }
+  .view { padding:0 14px 30px; }
   .leads th:nth-child(3), .leads td:nth-child(3), .leads .msg { display:none; }
+  .leads th, .leads td { padding:8px 6px; font-size:11px; }
+  .card { padding:16px; max-width:100%; }
+  .lead-detail { max-width:100%; }
+  .lead-detail h2 { font-size:16px; flex-wrap:wrap; gap:8px; }
+  .row { flex-wrap:wrap; }
+  .row button { flex:1 1 auto; min-width:0; font-size:12px; padding:8px 10px; }
+  .tabs { overflow-x:auto; -webkit-overflow-scrolling:touch; gap:0; }
+  .tab { padding:8px 10px; font-size:11px; white-space:nowrap; }
+  .contact-card { padding:8px; }
+  .cc-row { grid-template-columns:90px 1fr; font-size:11px; }
+  .ch-panel textarea { min-height:100px; }
+  .settings { max-width:100%; }
+}
+@media (max-width:500px) {
+  .kanban { grid-template-columns:1fr; gap:8px; }
+  .col { padding:8px; min-height:200px; }
+  .metrics { grid-template-columns:repeat(2, 1fr); gap:8px; }
+  .metric { padding:10px; }
+  .metric .v { font-size:20px; }
+  nav button { padding:6px 10px; font-size:12px; }
+  button { padding:6px 10px; font-size:12px; }
+  .modal { padding:10px; align-items:flex-start; padding-top:20px; }
+  .card { border-radius:8px; padding:14px; }
+  .leads th:nth-child(6), .leads td:nth-child(6) { display:none; }
+  .leads th:nth-child(7), .leads td:nth-child(7) { display:none; }
 }
