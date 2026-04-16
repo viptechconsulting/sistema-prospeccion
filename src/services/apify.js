@@ -77,7 +77,9 @@ export function normalizeLead(platform, raw) {
         gmb_url: raw.url,
         instagram_url: Array.isArray(instagrams) ? instagrams[0] : instagrams,
         email: Array.isArray(emails) ? emails[0] : (emails || raw.email),
-        phone: raw.phone || raw.phoneUnformatted || (Array.isArray(phones) ? phones[0] : null)
+        phone: raw.phone || raw.phoneUnformatted || (Array.isArray(phones) ? phones[0] : null),
+        rating: raw.totalScore || raw.rating,
+        review_count: raw.reviewsCount || raw.reviewCount
       };
     }
     case 'linkedin':

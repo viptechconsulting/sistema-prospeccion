@@ -1,5 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { db, getSetting } from '../db/index.js';
+import { getReviewsForLead } from './enrichment.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -24,6 +25,12 @@ Idioma de TODOS los mensajes: ${lang}.`;
 }
 
 function leadSummary(lead, campaign) {
+  const reviews = getReviewsForLead(lead);
+  const reviewsSummary = reviews.length ? `\nREVIEWS (${reviews.length}):\n${reviews.slice(0, 20).map(r => `- [${r.rating || '?'}★] ${r.text.slice(0, 200)}`).join('\n')}` : '';
+  const ratingInfo = lead.rating ? `- Rating Google: ${lead.rating}★ (${lead.review_count || 0} reviews)${lead.rating <= 4.3 ? ' [RATING BAJO]' : ''}` : '';
+  const topPos = lead.top_positive ? `- Patrón positivo recurrente: ${lead.top_positive}` : '';
+  const topNeg = lead.top_negative ? `- Queja recurrente: ${lead.top_negative}` : '';
+
   return `DATOS DEL SERVICIO (mío):
 - Servicio ofrecido: ${campaign.service_offered || getSetting('my_company_info')}
 - Beneficio principal: ${campaign.main_benefit || 'definido por el contexto'}
@@ -32,9 +39,13 @@ function leadSummary(lead, campaign) {
 DATOS DEL LEAD:
 - Nombre contacto: ${lead.name || 'N/A'}
 - Negocio: ${lead.company || lead.name || 'N/A'}
-- Plataforma: ${lead.platform}
+- Plataforma origen: ${lead.platform}
 - URL/perfil: ${lead.profile_url || 'N/A'}
-- Resumen del negocio (datos crudos scrapeados): ${(lead.raw_data || '').slice(0, 1800)}`;
+- Website: ${lead.website || 'SIN WEBSITE'}
+${ratingInfo}
+${topPos}
+${topNeg}${reviewsSummary}
+- Resumen crudo: ${(lead.raw_data || '').slice(0, 1200)}`;
 }
 
 function resolveLang(campaign) {
@@ -52,13 +63,14 @@ export async function scoreLead(lead, campaign = {}) {
 CRITERIO DE LEAD IDEAL (para calificar): ${criteria}
 
 TAREA:
-1) Calificá el lead del 1 al 10 evaluando: presencia digital activa, tamaño de empresa, señales de necesidad del servicio, señales de presupuesto. Una línea de justificación.
-2) Generá el MENSAJE 1 — Día 1 (primer contacto) en 3 canales.
+1) Calificá el lead del 1 al 10 (presencia digital, tamaño, señales de necesidad, presupuesto).
+2) Si hay reviews: identificá EL patrón positivo más repetido y LA queja/dolor más repetido. Frases cortas (máx 12 palabras c/u). Si hay menos de 3 reviews devolvé null en esos campos.
+3) Generá el MENSAJE 1 — Día 1 en 4 canales. Cuando exista queja recurrente, tejela SUTILMENTE en el mensaje (como observación, no como ataque). Cuando el rating sea ≤4.3 o el negocio no tenga website, mencionalo como señal del dolor sin juzgar.
 
 ${channelSpecs(lang)}
 
-Devuelve JSON estricto con esta forma:
-{"score": number, "reason": string, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
+Devuelve JSON estricto:
+{"score": number, "reason": string, "top_positive": string|null, "top_negative": string|null, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -72,6 +84,8 @@ Devuelve JSON estricto con esta forma:
   return {
     score: Math.max(1, Math.min(10, Number(parsed.score) || 0)),
     reason: String(parsed.reason || ''),
+    top_positive: parsed.top_positive || null,
+    top_negative: parsed.top_negative || null,
     messages: parsed.messages || {}
   };
 }
@@ -79,7 +93,7 @@ Devuelve JSON estricto con esta forma:
 export async function scoreAllPending(limit = 50) {
   const minScore = Number(getSetting('min_score')) || 4;
   const leads = db.prepare('SELECT * FROM leads WHERE score IS NULL LIMIT ?').all(limit);
-  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ? WHERE id = ?`);
+  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ? WHERE id = ?`);
   const campStmt = db.prepare('SELECT * FROM campaigns WHERE id = ?');
   let done = 0, failed = 0;
   for (const lead of leads) {
@@ -87,7 +101,7 @@ export async function scoreAllPending(limit = 50) {
       const campaign = lead.campaign_id ? campStmt.get(lead.campaign_id) : {};
       const r = await scoreLead(lead, campaign);
       const status = r.score < minScore ? 'descartado' : lead.status;
-      upd.run(r.score, r.reason, JSON.stringify(r.messages), status, lead.id);
+      upd.run(r.score, r.reason, JSON.stringify(r.messages), status, r.top_positive, r.top_negative, lead.id);
       done++;
     } catch (e) {
       console.error('score failed', lead.id, e.message);

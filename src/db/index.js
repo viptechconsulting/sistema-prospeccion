@@ -19,7 +19,7 @@ for (const col of [['language', "TEXT DEFAULT 'auto'"], ['service_offered', 'TEX
 for (const col of [['name_campaign', 'TEXT']]) {
   try { db.prepare(`ALTER TABLE campaigns ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
 }
-for (const col of [['contact_person', 'TEXT'], ['website', 'TEXT'], ['instagram_url', 'TEXT'], ['gmb_url', 'TEXT']]) {
+for (const col of [['contact_person', 'TEXT'], ['website', 'TEXT'], ['instagram_url', 'TEXT'], ['gmb_url', 'TEXT'], ['rating', 'REAL'], ['review_count', 'INTEGER'], ['top_positive', 'TEXT'], ['top_negative', 'TEXT']]) {
   try { db.prepare(`ALTER TABLE leads ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
 }
 

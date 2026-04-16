@@ -43,6 +43,7 @@ async function loadLeads() {
   if (state.filters.status) q.set('status', state.filters.status);
   if (state.filters.minScore) q.set('minScore', state.filters.minScore);
   if (state.filters.campaignId) q.set('campaignId', state.filters.campaignId);
+  if (state.filters.hasWebsite) q.set('hasWebsite', state.filters.hasWebsite);
   state.leads = await api('/api/leads?' + q);
   renderKanban();
   renderTable();
@@ -70,9 +71,11 @@ async function loadCampaigns() {
 
 function leadCard(l) {
   const scoreCls = (l.score || 0) >= 7 ? '' : 'low';
+  const warn = !l.website ? '<span title="Sin web" style="color:#ff6666">⚠</span>' : '';
+  const rating = l.rating != null ? `<span style="color:${l.rating <= 4.3 ? '#ff6666' : '#888'};font-size:11px">${l.rating}★</span>` : '';
   return `<div class="card-lead" data-id="${l.id}">
-    <div><span class="score ${scoreCls}">${l.score ?? '?'}</span><span class="t">${escapeHtml(l.name || '—')}</span></div>
-    <div class="s">${escapeHtml(l.company || '')} · ${PLATFORM_LABELS[l.platform] || l.platform}</div>
+    <div><span class="score ${scoreCls}">${l.score ?? '?'}</span><span class="t">${escapeHtml(l.name || '—')}</span> ${warn}</div>
+    <div class="s">${escapeHtml(l.company || '')} · ${PLATFORM_LABELS[l.platform] || l.platform} ${rating ? '· ' + rating : ''}</div>
   </div>`;
 }
 
@@ -122,13 +125,18 @@ async function openLead(id) {
   const loom = parsed?.loom_script || '';
   const legacy = parsed ? '' : (lead.suggested_message || '');
 
+  const ratingLow = lead.rating != null && lead.rating <= 4.3;
+  const noWeb = !lead.website;
   const contactCard = `
     <div class="contact-card">
       <div class="cc-row"><span class="cc-k">Nombre</span><span>${escapeHtml(lead.name || '—')}</span></div>
       <div class="cc-row"><span class="cc-k">Contacto</span><span>${escapeHtml(lead.contact_person || '—')}</span></div>
       <div class="cc-row"><span class="cc-k">Teléfono</span><span>${lead.phone ? escapeHtml(lead.phone) : '—'}</span></div>
       <div class="cc-row"><span class="cc-k">Email</span><span>${lead.email ? escapeHtml(lead.email) : '—'}</span></div>
-      <div class="cc-row"><span class="cc-k">Website</span><span>${lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" style="color:#00ff88">${escapeHtml(lead.website)}</a>` : '—'}</span></div>
+      <div class="cc-row"><span class="cc-k">Website</span><span>${lead.website ? `<a href="${escapeHtml(lead.website)}" target="_blank" style="color:#00ff88">${escapeHtml(lead.website)}</a>` : `<span style="color:#ff6666;font-weight:600">⚠ Sin website</span>`}</span></div>
+      <div class="cc-row"><span class="cc-k">Rating</span><span>${lead.rating != null ? `<span style="color:${ratingLow ? '#ff6666' : '#00ff88'};font-weight:600">${lead.rating}★</span> · ${lead.review_count || 0} reviews${ratingLow ? ' ⚠' : ''}` : `<button class="btn-enrich" data-id="${lead.id}" style="background:#1f1f1f;padding:3px 8px;font-size:11px">🔍 Buscar en Google</button>`}</span></div>
+      ${lead.top_positive ? `<div class="cc-row"><span class="cc-k">✓ Reviews</span><span style="color:#00ff88">${escapeHtml(lead.top_positive)}</span></div>` : ''}
+      ${lead.top_negative ? `<div class="cc-row"><span class="cc-k">✗ Quejas</span><span style="color:#ff9966">${escapeHtml(lead.top_negative)}</span></div>` : ''}
       <div class="cc-row"><span class="cc-k">Instagram</span><span>${lead.instagram_url ? `<a href="${escapeHtml(lead.instagram_url)}" target="_blank" style="color:#00ff88">${escapeHtml(lead.instagram_url)}</a>` : '—'}</span></div>
       <div class="cc-row"><span class="cc-k">Google Business</span><span>${lead.gmb_url ? `<a href="${escapeHtml(lead.gmb_url)}" target="_blank" style="color:#00ff88">ver perfil ↗</a>` : '—'}</span></div>
     </div>`;
@@ -199,6 +207,12 @@ async function openLead(id) {
   });
 
   $('.close').onclick = () => $('#modal-lead').classList.add('hidden');
+  const enrichBtn = $('.btn-enrich');
+  if (enrichBtn) enrichBtn.onclick = async () => {
+    enrichBtn.disabled = true; enrichBtn.textContent = 'Buscando…';
+    try { await api(`/api/leads/${id}/enrich`, { method: 'POST' }); toast('Enriquecido'); openLead(id); }
+    catch (e) { toast('Error: ' + e.message.slice(0,80), true); enrichBtn.disabled = false; enrichBtn.textContent = '🔍 Buscar en Google'; }
+  };
   $('#d-save').onclick = async () => {
     await api(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify({ suggested_message: parsed ? buildMessagesJSON() : $('#t-whatsapp').value, notes: $('#d-notes').value, status: $('#d-status').value }) });
     toast('Guardado'); $('#modal-lead').classList.add('hidden'); loadAll();
@@ -281,8 +295,8 @@ $$('nav button[data-view]').forEach(b => b.onclick = () => {
 });
 
 // filters
-['f-platform', 'f-status', 'f-score', 'f-campaign'].forEach(id => $('#' + id).addEventListener('change', () => {
-  state.filters = { platform: $('#f-platform').value, status: $('#f-status').value, minScore: $('#f-score').value, campaignId: $('#f-campaign').value };
+['f-platform', 'f-status', 'f-score', 'f-campaign', 'f-web'].forEach(id => $('#' + id).addEventListener('change', () => {
+  state.filters = { platform: $('#f-platform').value, status: $('#f-status').value, minScore: $('#f-score').value, campaignId: $('#f-campaign').value, hasWebsite: $('#f-web').value };
   loadLeads();
 }));
 $('#btn-refresh').onclick = loadAll;

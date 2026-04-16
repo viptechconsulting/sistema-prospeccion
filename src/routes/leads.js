@@ -1,18 +1,28 @@
 import express from 'express';
 import { db } from '../db/index.js';
 import { scoreAllPending, generateFollowup, translateMessages } from '../services/scoring.js';
+import { enrichFromGoogleMaps } from '../services/enrichment.js';
 
 export const leads = express.Router();
 
 leads.get('/', (req, res) => {
-  const { platform, status, minScore, campaignId } = req.query;
+  const { platform, status, minScore, campaignId, hasWebsite } = req.query;
   const where = [], args = [];
   if (platform) { where.push('platform = ?'); args.push(platform); }
   if (status) { where.push('status = ?'); args.push(status); }
   if (minScore) { where.push('score >= ?'); args.push(Number(minScore)); }
   if (campaignId) { where.push('campaign_id = ?'); args.push(Number(campaignId)); }
+  if (hasWebsite === 'yes') where.push("website IS NOT NULL AND website != ''");
+  if (hasWebsite === 'no') where.push("(website IS NULL OR website = '')");
   const sql = `SELECT * FROM leads ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY score DESC NULLS LAST, id DESC LIMIT 500`;
   res.json(db.prepare(sql).all(...args));
+});
+
+leads.post('/:id/enrich', async (req, res) => {
+  const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+  if (!lead) return res.status(404).json({ error: 'not found' });
+  const r = await enrichFromGoogleMaps(lead);
+  res.json({ ok: true, ...r });
 });
 
 leads.delete('/:id', (req, res) => {

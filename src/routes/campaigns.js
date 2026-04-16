@@ -23,13 +23,13 @@ campaigns.post('/', async (req, res) => {
     try {
       const items = await runActor(platform, { niche, location, keywords, maxLeads });
       const insert = db.prepare(`INSERT OR IGNORE INTO leads
-        (campaign_id, platform, name, company, contact_person, profile_url, website, instagram_url, gmb_url, email, phone, raw_data)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`);
+        (campaign_id, platform, name, company, contact_person, profile_url, website, instagram_url, gmb_url, email, phone, rating, review_count, raw_data)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
       const tx = db.transaction((arr) => {
         for (const r of arr) {
           const n = normalizeLead(platform, r);
           if (!n?.profile_url && !n?.email) continue;
-          insert.run(campaignId, platform, n.name, n.company, n.contact_person, n.profile_url, n.website, n.instagram_url, n.gmb_url, n.email, n.phone, JSON.stringify(r));
+          insert.run(campaignId, platform, n.name, n.company, n.contact_person, n.profile_url, n.website, n.instagram_url, n.gmb_url, n.email, n.phone, n.rating, n.review_count, JSON.stringify(r));
         }
       });
       tx(items);
