@@ -10,7 +10,7 @@ campaigns.get('/', (_req, res) => {
 });
 
 campaigns.post('/', async (req, res) => {
-  const { platform, niche, location, keywords, maxLeads = 25, language = 'auto', serviceOffered = '', mainBenefit = '', keyDifferential = '' } = req.body;
+  const { platform, niche, location, keywords, maxLeads = 25, language = 'auto', serviceOffered = '', mainBenefit = '', keyDifferential = '', serpStartPosition = 15 } = req.body;
   if (!platform) return res.status(400).json({ error: 'platform requerida' });
 
   const campaignId = db.prepare(
@@ -21,7 +21,12 @@ campaigns.post('/', async (req, res) => {
 
   (async () => {
     try {
-      const items = await runActor(platform, { niche, location, keywords, maxLeads });
+      let items = await runActor(platform, { niche, location, keywords, maxLeads });
+      if (platform === 'google_serp') {
+        const first = items[0];
+        const organic = first?.organicResults || first?.results || items;
+        items = organic.filter(r => (r.position || 0) >= serpStartPosition).slice(0, maxLeads);
+      }
       const insert = db.prepare(`INSERT OR IGNORE INTO leads
         (campaign_id, platform, name, company, contact_person, profile_url, website, instagram_url, gmb_url, email, phone, rating, review_count, raw_data)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);

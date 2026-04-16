@@ -4,7 +4,8 @@ const ACTORS = {
   google_maps: 'compass~crawler-google-places',
   linkedin: 'bebity~linkedin-premium-actor',
   instagram: 'apify~instagram-scraper',
-  meta_ads: 'curious_coder~facebook-ads-library-scraper'
+  meta_ads: 'curious_coder~facebook-ads-library-scraper',
+  google_serp: 'apify~google-search-scraper'
 };
 
 function buildInput(platform, { niche, location, keywords, maxLeads }) {
@@ -41,6 +42,15 @@ function buildInput(platform, { niche, location, keywords, maxLeads }) {
         scrapeAdDetails: true,
         scrapePageAds: { activeStatus: 'all' },
         period: ''
+      };
+    case 'google_serp':
+      return {
+        queries: `${search} ${location || ''}`.trim(),
+        resultsPerPage: 100,
+        maxPagesPerQuery: 1,
+        countryCode: 'us',
+        languageCode: 'en',
+        mobileResults: false
       };
     default:
       throw new Error('platform desconocida');
@@ -102,6 +112,18 @@ export function normalizeLead(platform, raw) {
         email: raw.businessEmail || raw.publicEmail,
         phone: raw.businessPhoneNumber
       };
+    case 'google_serp': {
+      const title = raw.title || '';
+      const domain = raw.displayedUrl || (raw.url ? new URL(raw.url).hostname : '');
+      return {
+        name: title.split('|')[0].split('-')[0].trim() || domain,
+        company: title,
+        profile_url: raw.url,
+        website: raw.url,
+        email: null,
+        phone: null
+      };
+    }
     case 'meta_ads': {
       const pageName = raw.page_name || raw.pageName || raw.advertiser_name || raw.advertiserName;
       const pageId = raw.page_id || raw.pageId;
