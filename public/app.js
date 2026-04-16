@@ -147,10 +147,10 @@ async function openLead(id) {
       <button class="tab" data-ch="instagram_dm">Instagram</button>
       <button class="tab" data-ch="loom_script">Loom Script</button>
     </div>
-    <div id="ch-whatsapp" class="ch-panel active"><textarea id="t-whatsapp">${escapeHtml(wa)}</textarea></div>
-    <div id="ch-email" class="ch-panel"><input id="t-email-subject" placeholder="Asunto" value="${escapeHtml(emailSubject)}"/><textarea id="t-email">${escapeHtml(emailBody)}</textarea></div>
-    <div id="ch-instagram_dm" class="ch-panel"><textarea id="t-instagram_dm">${escapeHtml(ig)}</textarea></div>
-    <div id="ch-loom_script" class="ch-panel"><textarea id="t-loom_script" style="min-height:300px">${escapeHtml(loom)}</textarea></div>
+    <div id="ch-whatsapp" class="ch-panel active"><textarea id="t-whatsapp">${escapeHtml(wa)}</textarea><button class="secondary cp-btn" data-cp="t-whatsapp">📋 Copiar WhatsApp</button></div>
+    <div id="ch-email" class="ch-panel"><input id="t-email-subject" placeholder="Asunto" value="${escapeHtml(emailSubject)}"/><textarea id="t-email">${escapeHtml(emailBody)}</textarea><button class="secondary cp-btn" data-cp="email">📋 Copiar Email</button></div>
+    <div id="ch-instagram_dm" class="ch-panel"><textarea id="t-instagram_dm">${escapeHtml(ig)}</textarea><button class="secondary cp-btn" data-cp="t-instagram_dm">📋 Copiar Instagram</button></div>
+    <div id="ch-loom_script" class="ch-panel"><textarea id="t-loom_script" style="min-height:300px">${escapeHtml(loom)}</textarea><button class="secondary cp-btn" data-cp="t-loom_script">📋 Copiar Loom</button></div>
     ` : `<label>Mensaje sugerido<textarea id="t-whatsapp">${escapeHtml(legacy)}</textarea></label>`}
 
     <label>Notas<textarea id="d-notes">${escapeHtml(lead.notes || '')}</textarea></label>
@@ -168,6 +168,15 @@ async function openLead(id) {
     <div class="history"><h3 style="color:#aaa;font-size:12px;text-transform:uppercase;margin-top:16px">Historial</h3>${msgHtml}</div>
   `;
   $('#modal-lead').classList.remove('hidden');
+
+  $$('.cp-btn').forEach(b => b.onclick = async () => {
+    const key = b.dataset.cp;
+    let text;
+    if (key === 'email') text = `Asunto: ${$('#t-email-subject').value}\n\n${$('#t-email').value}`;
+    else text = $('#' + key).value;
+    await navigator.clipboard.writeText(text);
+    toast(`Copiado`);
+  });
 
   let activeCh = 'whatsapp';
   $$('.tab').forEach(t => t.onclick = () => {
