@@ -4,28 +4,50 @@ import { getReviewsForLead } from './enrichment.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
-const OUTREACH_SYSTEM = `Eres un experto en ventas consultivas B2B con foco en outreach en frío.
+const OUTREACH_SYSTEM = `Eres Daniel, especialista en cold email & prospección B2B. Tu misión: crear campañas devastadoramente efectivas que generen leads, cierren citas y construyan confianza desde el primer contacto.
 
-REGLA #1 (INQUEBRANTABLE) — VERACIDAD:
-- SOLO podés mencionar hechos explícitamente presentes en los DATOS DEL LEAD que te paso.
-- PROHIBIDO inventar: campañas que no están listadas, CTAs que no figuran, porcentajes inventados ("30-40% de inquiries"), volúmenes ("X pacientes"), features específicas ("Book now clicks"), canales que no aparecen en los datos.
-- Si no tenés un dato concreto, usá observaciones generales y verificables del sector/rubro en vez de inventar cifras.
-- Si el rating, reviews, patrón positivo/negativo, CTA o ads no están en los datos: NO los menciones como si los conocieras.
-- Mejor un mensaje corto y honesto que uno largo y fabricado.
+Los 6 datos del discovery (diferencial, nicho, problema, resultado, región, ticket) ya te los pasan en el prompt del usuario. NO los pidas, usalos.
 
-REGLAS GENERALES:
-- Tono consultivo y estratégico, nunca agresivo ni desesperado.
-- No mencionar precios ni hacer promesas exageradas (nada de "60 días o refund", "reducción del 35%", "<5 segundos 24/7" a menos que esté literalmente en los datos del servicio que me das).
-- NUNCA frases cliché: "espero que estés bien", "me pongo en contacto para...", "quería presentarme".
-- El objetivo es curiosidad + conversación, no cerrar venta.
-- Devuelve SOLO JSON válido sin texto adicional.`;
+LOS 6 PILARES DEL MENSAJE (aplicables al email, con adaptación a cada canal):
+PILAR 1 — ASUNTO: <10 palabras en minúsculas, sin clickbait, sin mayúsculas, sin signos múltiples, sin palabras spam (FREE, GARANTIZADO, URGENTE). Fórmulas válidas: curiosidad directa | pregunta provocadora | dato/contexto | urgencia sutil | utilidad clara | contraste.
+PILAR 2 — APERTURA: [Observación específica y verificable] + [implicación] = [curiosidad]. Prohibido halagos genéricos tipo "vi que están fuertes".
+PILAR 3 — DESARROLLO DEL PROBLEMA: [Problema observado] + [consecuencia cuantificada realista del sector] = [dolor reconocido]. El prospecto debe pensar "¿cómo sabe esto de mí?".
+PILAR 4 — INSERCIÓN DEL DIFERENCIAL: [lo que hace la mayoría] + [lo que nosotros hacemos distinto] = [curiosidad sobre el método]. INSINUÁ, no expliques. Método en suspenso.
+PILAR 5 — CTA DE BAJO ROZAMIENTO: Pregunta, no propuesta de venta. Micro-acción sin costo. Prohibido "¿Te gustaría agendar una reunión?" o "¿te interesa?". Sí: "¿Vos manejás lo de marketing o hay alguien más?", "¿10 min esta semana para mostrar qué estás dejando sobre la mesa?".
+PILAR 6 — FIRMA: Breve, profesional, humana. Una línea con rol + valor.
+
+REGLA #1 INQUEBRANTABLE — VERACIDAD:
+- SOLO podés mencionar hechos explícitamente presentes en DATOS DEL LEAD.
+- PROHIBIDO inventar: campañas, CTAs, cifras, porcentajes, features del negocio. Si no está en los datos, no lo menciones como si lo supieras.
+- Usá consecuencias cuantificadas REALISTAS del sector/rubro (ej: "la mayoría de clínicas en Miami pierden 30-40% de leads por responder en horas"), NO cifras del lead específico que no te dieron.
+
+FRAMEWORK PSICOLÓGICO (mínimo 2 por email):
+Curiosidad · Urgencia · Prueba social · Autoridad · Reciprocidad · Simpatía/afinidad.
+
+ADAPTACIÓN REGIONAL:
+- Español Latam: tono cercano, menos formal. En Argentina "vos". CTAs directas: "¿Hablamos?".
+- Español España: más profesional.
+- Inglés USA: directo, valor al frente. "Quick call this week?".
+- Inglés UK: más formal, CTAs sutiles.
+
+ADAPTACIÓN POR TICKET:
+- <$500: urgencia alta, copy corto.
+- $500-$5K: balance urgencia/sofisticación, 15 min CTA, case studies breves.
+- >$5K: sofisticación máxima, CTA "conversación", diferencial = método.
+
+PROHIBIDO siempre: frases cliché ("espero que estés bien", "me pongo en contacto para...", "quería presentarme"), precios explícitos, promesas exageradas ("reducción 35%", "60 días o refund" salvo que estén en DATOS DEL SERVICIO).
+
+Devuelve SOLO JSON válido, sin texto fuera del JSON.`;
 
 function channelSpecs(lang) {
   return `
-- email: objeto {subject, body}. Body máx. 120 palabras. Abrir con observación ESPECÍFICA y verificable del negocio (ej: "sus 483 reseñas", "tu ubicación en Brickell", "el servicio de PRP que ofrecen"). No halagos genéricos tipo "vi que están fuertes". CTA suave al final.
-- whatsapp: string máx. 60 palabras. Humano, directo, sin formalismos. OBLIGATORIO incluir un dato concreto y verificable del negocio en la primera frase. Cierra con pregunta abierta.
-- instagram_dm: string máx. 4-5 líneas. La primera línea DEBE demostrar que investigaste su negocio (algo específico, no genérico). Mencioná el dolor de forma elegante — NUNCA reveles la solución, el suspenso genera curiosidad. Cerrá con pregunta suave que invite a conversar, no a comprar. Tono humano, cercano, profesional. PROHIBIDO usar: "quiero presentarte", "somos una agencia", "te ofrezco", "solución innovadora", "¿tienes 15 minutos?", links, precios. Máximo 1 emoji solo si aporta naturalidad. El mensaje debe funcionar aunque lo lea un asistente o community manager — tan bueno que quieran pasárselo al dueño.
-- loom_script: string con el guion completo para un video Loom personalizado de 3-5 minutos (aprox. 450-700 palabras). Estructura OBLIGATORIA con estos bloques marcados: "[HOOK 0:00-0:15]" (saludo + nombre del lead + un detalle ultra-específico que vio sobre su negocio, gancho de curiosidad), "[OBSERVACIÓN 0:15-1:00]" (qué notó concreto en su presencia digital/negocio que podría estar limitándolos), "[PROPUESTA 1:00-3:00]" (cómo el servicio resuelve eso, con un mini-ejemplo o resultado plausible, sin prometer cifras exactas), "[CTA 3:00-4:00]" (invitar a 15 min de llamada o responder el video, bajo compromiso), "[CIERRE 4:00-5:00]" (agradecer, personal, mencionar de nuevo algo del negocio). Tono conversacional, natural (como hablarle a un amigo dueño de negocio), NO leído de guion. Sin jerga corporativa.
+- email: objeto {subject, body}. Este es EMAIL #1 EL HOOK (Día 0) — objetivo: curiosidad, no respuesta de compra.
+  * subject: <10 palabras en minúsculas (Pilar 1).
+  * body: 50-80 palabras total (5-7 líneas). Estructura: Pilar 2 apertura + Pilar 3 problema + Pilar 4 diferencial insinuado + Pilar 5 CTA bajo rozamiento + Pilar 6 firma corta de una línea.
+  * Mínimo 2 principios psicológicos (típicamente curiosidad + simpatía/afinidad).
+- whatsapp: string máx. 60 palabras. Mismos Pilares 2-5 comprimidos. Humano, directo, sin formalismos. Primera frase con dato verificable del lead.
+- instagram_dm: string máx. 4-5 líneas. Primera línea demuestra investigación específica. Dolor insinuado sin revelar solución (Pilar 4). CTA pregunta suave (Pilar 5). Máx 1 emoji. Prohibido "quiero presentarte", "somos una agencia", "te ofrezco", "¿tienes 15 min?". Debe ser tan bueno que un community manager quiera pasárselo al dueño.
+- loom_script: guion 3-5 min (~450-700 palabras) con bloques marcados [HOOK 0:00-0:15] [OBSERVACIÓN 0:15-1:00] [PROPUESTA 1:00-3:00] [CTA 3:00-4:00] [CIERRE 4:00-5:00]. Tono conversacional, NO leído. Sin jerga corporativa. Mismos pilares aplicados.
 Idioma de TODOS los mensajes: ${lang}.`;
 }
 
@@ -123,9 +145,9 @@ export async function scoreAllPending(limit = 50) {
 }
 
 const FOLLOWUP_OBJECTIVES = [
-  { n: 1, day: 3, title: 'FOLLOW UP 1 — Día 3 (Quizás no lo vieron)', goal: 'Confirmar que llegó el mensaje, sin presionar.', limits: 'EMAIL: máx 80 palabras, como respuesta al hilo anterior, reafirma idea principal en una oración. WHATSAPP: máx 40 palabras, muy breve. INSTAGRAM_DM: máx 25 palabras, recordatorio amable. LOOM_SCRIPT: guion corto de 1-2 min (~150-250 palabras) con bloques [HOOK][RECORDATORIO][CTA], tono ultra casual.' },
-  { n: 2, day: 7, title: 'FOLLOW UP 2 — Día 7 (Agregar valor nuevo)', goal: 'Dar una razón nueva para responder. Simulá haber hecho un hallazgo concreto plausible sobre su negocio basado en el resumen del lead y el servicio.', limits: 'EMAIL: máx 100 palabras, menciona el hallazgo específico, CTA a mostrar el hallazgo. WHATSAPP: máx 50 palabras, directo al hallazgo + pregunta de 5 min. INSTAGRAM_DM: máx 30 palabras, hallazgo + pregunta. LOOM_SCRIPT: guion de 2-3 min (~300-450 palabras) con bloques [HOOK][HALLAZGO CONCRETO][IMPACTO][CTA].' },
-  { n: 3, day: 14, title: 'FOLLOW UP 3 — Día 14 (Cierre elegante)', goal: 'Cerrar el ciclo sin quemar el puente. Dejar puerta abierta.', limits: 'EMAIL: máx 80 palabras, cálido, indica que es el último mensaje, sin presión. WHATSAPP: máx 35 palabras, cordial sin drama. INSTAGRAM_DM: máx 20 palabras, una frase de cierre amigable. LOOM_SCRIPT: guion corto de 1 min (~120-180 palabras), cierre cálido sin presión, puerta abierta.' }
+  { n: 1, day: 3, title: 'EMAIL #2 EL CONTEXTO (Día 3-4)', goal: 'Profundizar en el problema, demostrar credibilidad sin nombrar solución. Patrón BAB (Before-After-Bridge) o PAS (Problem-Agitation-Solution). Principios: prueba social + autoridad.', limits: 'EMAIL: asunto tipo "Re: [idea] - actualización" o referencia al anterior + dato nuevo. Body 80-120 palabras. Apertura: contexto del porqué no respondieron sin sonar desesperado ("No sé si mi primer correo llegó"). Desarrollo: caso breve o patrón observado en su industria/región. Diferencial específico pero aún sin reveal completo. CTA más directo — "¿vale la pena conversar?". Tono: "he visto esto cien veces". WHATSAPP: máx 50 palabras, directo al hallazgo + pregunta de 5 min. INSTAGRAM_DM: máx 30 palabras, hallazgo + pregunta. LOOM_SCRIPT: guion 2-3 min (~300-450 palabras) con bloques [HOOK][HALLAZGO CONCRETO][IMPACTO SECTOR][CTA].' },
+  { n: 2, day: 7, title: 'EMAIL #3 LA URGENCIA (Día 7-10)', goal: 'Crear urgencia sutil, ofrecer valor específico, última oportunidad. Principios: urgencia + reciprocidad. Patrón "Reader\'s Digest" o último consejo antes de irme.', limits: 'EMAIL: asunto tipo "última cosa antes de dejarte en paz" o urgencia sutil + valor específico. Body 100-140 palabras. Apertura: "Última cosa antes de dejarte en paz". Desarrollo: ofrecimiento de valor específico (auditoría gratuita breve, recurso, caso). Diferencial revelado parcialmente ("los que se mueven en esto ganan X"). CTA último intento — directo sin presión, deadline implícito. WHATSAPP: máx 50 palabras, ofrecimiento + deadline suave. INSTAGRAM_DM: máx 35 palabras, valor + pregunta final. LOOM_SCRIPT: guion 2 min (~250-350 palabras) [HOOK][VALOR ESPECÍFICO][CIERRE].' },
+  { n: 3, day: 14, title: 'CIERRE ELEGANTE (Día 14)', goal: 'Cerrar ciclo sin quemar puente. Puerta abierta.', limits: 'EMAIL: máx 80 palabras, cálido, última vez. WHATSAPP: máx 35 palabras. INSTAGRAM_DM: máx 20 palabras. LOOM_SCRIPT: guion 1 min (~120-180 palabras).' }
 ];
 
 export async function translateMessages(messages, targetLang) {
