@@ -40,7 +40,8 @@ Reglas:
       messages: [{ role: 'user', content: prompt }]
     });
 
-    const text = response.content[0].text.trim();
+    let text = response.content[0].text.trim();
+    text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
     const parsed = JSON.parse(text);
 
     if (!parsed.platform || !parsed.niche) {
