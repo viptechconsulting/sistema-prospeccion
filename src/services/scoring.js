@@ -194,6 +194,9 @@ function leadSummary(lead, campaign) {
   const topPos = lead.top_positive ? `- Patrón positivo recurrente: ${lead.top_positive}` : '';
   const topNeg = lead.top_negative ? `- Queja recurrente: ${lead.top_negative}` : '';
 
+  const adsInfo = lead.has_ads ? `- Inversión en marketing: ${lead.has_ads}` : '';
+  const seoInfo = lead.seo_audit ? `- Auditoría SEO: ${lead.seo_audit}` : '';
+
   return `DATOS DEL SERVICIO (mío):
 - Servicio ofrecido: ${campaign.service_offered || getSetting('my_company_info')}
 - Beneficio principal: ${campaign.main_benefit || 'definido por el contexto'}
@@ -206,6 +209,8 @@ DATOS DEL LEAD:
 - URL/perfil: ${lead.profile_url || 'N/A'}
 - Website: ${lead.website || 'SIN WEBSITE'}
 ${ratingInfo}
+${adsInfo}
+${seoInfo}
 ${topPos}
 ${topNeg}${reviewsSummary}
 - Resumen crudo: ${(lead.raw_data || '').slice(0, 1200)}`;
@@ -228,18 +233,20 @@ CRITERIO DE LEAD IDEAL (para calificar): ${criteria}
 TAREA:
 1) Calificá el lead del 1 al 10 (presencia digital, tamaño, señales de necesidad, presupuesto).
 2) Si hay 3+ reviews en los datos: identificá EL patrón positivo más repetido y LA queja más repetida (frases cortas ≤12 palabras). Si hay menos de 3 reviews: devolvé null en esos campos.
-3) Generá el MENSAJE 1 — Día 1 en 4 canales. REGLAS CLAVE para este lead:
-   - Primera frase: SOLO datos verificables (nombre del negocio, rating real, # reviews reales, website o falta de ella, ubicación, servicios listados). NADA inventado.
-   - Si hay queja recurrente real → tejela con delicadeza como observación.
-   - Si rating real ≤4.3 → mencioná con tacto.
-   - Si NO hay website → mencioná como oportunidad.
-   - Si NO hay reviews ni ads data específica → usá observación genérica del sector/ubicación SIN inventar cifras ni detalles.
+3) INVERSIÓN EN MARKETING: Revisá los datos crudos del lead. Indicá si hay evidencia de que invierte en publicidad (Meta Ads, Google Ads, ads activos mencionados en los datos). Devolvé un string corto tipo "Meta Ads activos", "Google Ads detectados", "Meta + Google Ads", o "Sin ads detectados". SOLO basado en datos reales que aparezcan, NO inventes.
+4) AUDITORÍA SEO RÁPIDA (solo si hay website): Basándote en los datos disponibles del lead, hacé un checklist rápido de problemas probables. NO hagas auditorías técnicas complejas. Enfocate en:
+   - Titles mal optimizados
+   - Meta descriptions inexistentes
+   - Encabezados mal estructurados
+   - Keywords no trabajadas
+   TRADUCÍ cada problema a impacto de negocio. Ejemplo: NO digas "H1 mal estructurado", SÍ decí "Estás perdiendo X búsquedas mensuales porque Google no entiende de qué va tu página". Devolvé un string corto (2-4 frases) con los hallazgos traducidos a negocio. Si no hay website: "Sin website — sin presencia orgánica".
+5) Generá el MENSAJE 1 — Día 1 en 4 canales. Usá la info de inversión en marketing y auditoría SEO para personalizar. Si tienen ads activos → es señal de presupuesto, mencioná sutilmente. Si la auditoría detectó oportunidades → úsalas como gancho (traducidas a negocio, no técnicas).
    - NUNCA inventes campañas, CTAs, porcentajes, cifras de conversión o features del negocio.
 
 ${channelSpecs(lang)}
 
 Devuelve JSON estricto:
-{"score": number, "reason": string, "top_positive": string|null, "top_negative": string|null, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
+{"score": number, "reason": string, "top_positive": string|null, "top_negative": string|null, "has_ads": string, "seo_audit": string, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
@@ -255,6 +262,8 @@ Devuelve JSON estricto:
     reason: String(parsed.reason || ''),
     top_positive: parsed.top_positive || null,
     top_negative: parsed.top_negative || null,
+    has_ads: parsed.has_ads || 'Sin datos',
+    seo_audit: parsed.seo_audit || 'Sin datos',
     messages: parsed.messages || {}
   };
 }
@@ -262,7 +271,7 @@ Devuelve JSON estricto:
 export async function scoreAllPending(limit = 50) {
   const minScore = Number(getSetting('min_score')) || 4;
   const leads = db.prepare('SELECT * FROM leads WHERE score IS NULL LIMIT ?').all(limit);
-  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ? WHERE id = ?`);
+  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ?, has_ads = ?, seo_audit = ? WHERE id = ?`);
   const campStmt = db.prepare('SELECT * FROM campaigns WHERE id = ?');
   let done = 0, failed = 0;
   for (const lead of leads) {
@@ -270,7 +279,7 @@ export async function scoreAllPending(limit = 50) {
       const campaign = lead.campaign_id ? campStmt.get(lead.campaign_id) : {};
       const r = await scoreLead(lead, campaign);
       const status = r.score < minScore ? 'descartado' : lead.status;
-      upd.run(r.score, r.reason, JSON.stringify(r.messages), status, r.top_positive, r.top_negative, lead.id);
+      upd.run(r.score, r.reason, JSON.stringify(r.messages), status, r.top_positive, r.top_negative, r.has_ads, r.seo_audit, lead.id);
       done++;
     } catch (e) {
       console.error('score failed', lead.id, e.message);

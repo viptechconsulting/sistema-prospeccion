@@ -73,9 +73,10 @@ function leadCard(l) {
   const scoreCls = (l.score || 0) >= 7 ? '' : 'low';
   const warn = !l.website ? '<span title="Sin web" style="color:#ff6666">⚠</span>' : '';
   const rating = l.rating != null ? `<span style="color:${l.rating <= 4.3 ? '#ff6666' : '#888'};font-size:11px">${l.rating}★</span>` : '';
+  const ads = l.has_ads && !String(l.has_ads).includes('Sin') ? '<span title="Invierte en Ads" style="color:#00ff88;font-size:11px">💰</span>' : '';
   return `<div class="card-lead" data-id="${l.id}">
     <div><span class="score ${scoreCls}">${l.score ?? '?'}</span><span class="t">${escapeHtml(l.name || '—')}</span> ${warn}</div>
-    <div class="s">${escapeHtml(l.company || '')} · ${PLATFORM_LABELS[l.platform] || l.platform} ${rating ? '· ' + rating : ''}</div>
+    <div class="s">${escapeHtml(l.company || '')} · ${PLATFORM_LABELS[l.platform] || l.platform} ${rating ? '· ' + rating : ''} ${ads}</div>
   </div>`;
 }
 
@@ -137,6 +138,8 @@ async function openLead(id) {
       <div class="cc-row"><span class="cc-k">Rating</span><span>${lead.rating != null ? `<span style="color:${ratingLow ? '#ff6666' : '#00ff88'};font-weight:600">${lead.rating}★</span> · ${lead.review_count || 0} reviews${ratingLow ? ' ⚠' : ''}` : `<button class="btn-enrich" data-id="${lead.id}" style="background:#1f1f1f;padding:3px 8px;font-size:11px">🔍 Buscar en Google</button>`}</span></div>
       ${lead.top_positive ? `<div class="cc-row"><span class="cc-k">✓ Reviews</span><span style="color:#00ff88">${escapeHtml(lead.top_positive)}</span></div>` : ''}
       ${lead.top_negative ? `<div class="cc-row"><span class="cc-k">✗ Quejas</span><span style="color:#ff9966">${escapeHtml(lead.top_negative)}</span></div>` : ''}
+      <div class="cc-row"><span class="cc-k">💰 Inversión Ads</span><span style="color:${lead.has_ads && !lead.has_ads.includes('Sin') ? '#00ff88' : '#ff6666'};font-weight:600">${escapeHtml(lead.has_ads || 'Sin datos')}</span></div>
+      ${lead.seo_audit ? `<div class="cc-row"><span class="cc-k">🔍 SEO Audit</span><span style="font-size:11px">${escapeHtml(lead.seo_audit)}</span></div>` : ''}
       <div class="cc-row"><span class="cc-k">Instagram</span><span>${lead.instagram_url ? `<a href="${escapeHtml(lead.instagram_url)}" target="_blank" style="color:#00ff88">${escapeHtml(lead.instagram_url)}</a>` : '—'}</span></div>
       <div class="cc-row"><span class="cc-k">Google Business</span><span>${lead.gmb_url ? `<a href="${escapeHtml(lead.gmb_url)}" target="_blank" style="color:#00ff88">ver perfil ↗</a>` : '—'}</span></div>
     </div>`;
