@@ -1,8 +1,58 @@
 import express from 'express';
+import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../db/index.js';
 import { runActor, normalizeLead } from '../services/apify.js';
 
+const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
 export const campaigns = express.Router();
+
+campaigns.post('/prompt', async (req, res) => {
+  const { prompt } = req.body;
+  if (!prompt?.trim()) return res.status(400).json({ error: 'prompt requerido' });
+
+  try {
+    const response = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 500,
+      system: `Eres un parser de búsquedas de prospección. El usuario describe en lenguaje natural qué tipo de negocios/profesionales quiere buscar. Tu trabajo es extraer los parámetros estructurados para lanzar una búsqueda.
+
+Responde SOLO con JSON válido, sin markdown ni explicaciones:
+{
+  "platform": "google_maps|linkedin|instagram|google_serp",
+  "niche": "tipo de negocio/profesional",
+  "location": "ciudad, estado/país",
+  "keywords": "palabras clave adicionales o vacío",
+  "maxLeads": número (default 25 si no se especifica),
+  "language": "es|en|auto"
+}
+
+Reglas:
+- Si menciona Google Maps, estrellas, reseñas, calificación, teléfono, dirección → platform = "google_maps"
+- Si menciona LinkedIn, perfiles profesionales, empresas B2B → platform = "linkedin"
+- Si menciona Instagram, perfiles sociales → platform = "instagram"
+- Si menciona posicionamiento web, SEO, resultados de Google → platform = "google_serp"
+- Si no especifica plataforma pero pide datos locales (teléfono, dirección, reseñas) → platform = "google_maps"
+- Si no especifica cantidad, usa 25
+- Detecta el idioma del prompt para "language"
+- "niche" debe ser conciso: "dentistas", "spas", "agencias de marketing"
+- "location" debe ser lo más específico posible`,
+      messages: [{ role: 'user', content: prompt }]
+    });
+
+    const text = response.content[0].text.trim();
+    const parsed = JSON.parse(text);
+
+    if (!parsed.platform || !parsed.niche) {
+      return res.status(400).json({ error: 'No se pudo extraer plataforma o nicho del prompt' });
+    }
+
+    res.json(parsed);
+  } catch (err) {
+    console.error('prompt parse failed', err);
+    res.status(500).json({ error: 'Error parseando prompt: ' + err.message });
+  }
+});
 
 campaigns.get('/', (_req, res) => {
   const rows = db.prepare('SELECT * FROM campaigns ORDER BY created_at DESC').all();

@@ -58,16 +58,23 @@
 <div id="modal-campaign" class="modal hidden">
   <form class="card">
     <h2>Nueva campaña</h2>
-    <label>Plataforma<select name="platform" required><option value="google_maps">Google Maps</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option><option value="meta_ads">Meta Ads Library</option><option value="google_serp">Google SERP (pos 15+)</option></select></label>
-    <label>Nicho<input name="niche" placeholder="dentistas, spas, agencias..." required/></label>
-    <label>Ubicación<input name="location" placeholder="Miami, FL"/></label>
-    <label>Palabras clave<input name="keywords" placeholder="opcional"/></label>
-    <label>Idioma del mensaje<select name="language"><option value="auto">Auto-detectar</option><option value="es">Español</option><option value="en">Inglés</option></select></label>
-    <label>Servicio ofrecido<input name="serviceOffered" placeholder="Ej: automatizaciones con IA para seguimiento de clientes"/></label>
-    <label>Beneficio principal<input name="mainBenefit" placeholder="Ej: ahorra 5 horas semanales en tareas repetitivas"/></label>
-    <label>Diferencial clave<input name="keyDifferential" placeholder="Ej: implementación en menos de 2 semanas, sin código"/></label>
-    <label>SERP desde posición (solo Google SERP)<input name="serpStartPosition" type="number" value="15" min="1" max="90"/></label>
-    <label>Máx leads<input name="maxLeads" type="number" value="25" min="1" max="500"/></label>
+    <div id="prompt-section" style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:16px;background:#1a1a2e">
+      <label style="color:#00ff88;font-weight:600;font-size:13px">Búsqueda con IA<textarea id="campaign-prompt" rows="3" placeholder="Ej: Búscame 20 dentistas en San Juan, Puerto Rico con su teléfono, dirección y calificación en Google Maps" style="margin-top:6px"></textarea></label>
+      <button type="button" id="btn-parse-prompt" class="primary" style="margin-top:8px;width:100%">Analizar con IA</button>
+      <div id="prompt-status" style="font-size:11px;color:#888;margin-top:6px"></div>
+    </div>
+    <div id="manual-fields">
+      <label>Plataforma<select name="platform" required><option value="google_maps">Google Maps</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option><option value="meta_ads">Meta Ads Library</option><option value="google_serp">Google SERP (pos 15+)</option></select></label>
+      <label>Nicho<input name="niche" placeholder="dentistas, spas, agencias..." required/></label>
+      <label>Ubicación<input name="location" placeholder="Miami, FL"/></label>
+      <label>Palabras clave<input name="keywords" placeholder="opcional"/></label>
+      <label>Idioma del mensaje<select name="language"><option value="auto">Auto-detectar</option><option value="es">Español</option><option value="en">Inglés</option></select></label>
+      <label>Servicio ofrecido<input name="serviceOffered" placeholder="Ej: automatizaciones con IA para seguimiento de clientes"/></label>
+      <label>Beneficio principal<input name="mainBenefit" placeholder="Ej: ahorra 5 horas semanales en tareas repetitivas"/></label>
+      <label>Diferencial clave<input name="keyDifferential" placeholder="Ej: implementación en menos de 2 semanas, sin código"/></label>
+      <label>SERP desde posición (solo Google SERP)<input name="serpStartPosition" type="number" value="15" min="1" max="90"/></label>
+      <label>Máx leads<input name="maxLeads" type="number" value="25" min="1" max="500"/></label>
+    </div>
     <div class="row">
       <button type="button" class="cancel">Cancelar</button>
       <button type="submit" class="primary">Lanzar</button>

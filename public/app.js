@@ -310,6 +310,38 @@ $('#btn-score').onclick = async () => {
   loadAll();
 };
 
+// prompt parsing
+$('#btn-parse-prompt').onclick = async () => {
+  const prompt = $('#campaign-prompt').value.trim();
+  if (!prompt) return toast('Escribe qué quieres buscar', true);
+  const status = $('#prompt-status');
+  const btn = $('#btn-parse-prompt');
+  btn.disabled = true;
+  btn.textContent = 'Analizando...';
+  status.textContent = 'Claude está interpretando tu búsqueda...';
+  status.style.color = '#888';
+  try {
+    const parsed = await api('/api/campaigns/prompt', { method: 'POST', body: JSON.stringify({ prompt }) });
+    const form = $('#modal-campaign form');
+    if (parsed.platform) form.elements.platform.value = parsed.platform;
+    if (parsed.niche) form.elements.niche.value = parsed.niche;
+    if (parsed.location) form.elements.location.value = parsed.location;
+    if (parsed.keywords) form.elements.keywords.value = parsed.keywords;
+    if (parsed.language) form.elements.language.value = parsed.language;
+    if (parsed.maxLeads) form.elements.maxLeads.value = parsed.maxLeads;
+    status.textContent = `Detectado: ${parsed.niche} en ${parsed.location || 'sin ubicación'} → ${PLATFORM_LABELS[parsed.platform] || parsed.platform} (${parsed.maxLeads} leads)`;
+    status.style.color = '#00ff88';
+    toast('Campos completados — revisa y lanza');
+  } catch (err) {
+    status.textContent = 'Error: ' + err.message;
+    status.style.color = '#ff6666';
+    toast('No se pudo parsear el prompt', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Analizar con IA';
+  }
+};
+
 // new campaign
 $('#btn-new').onclick = () => openCampaignModal();
 $('#modal-campaign .cancel').onclick = () => $('#modal-campaign').classList.add('hidden');
