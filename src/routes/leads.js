@@ -1,7 +1,7 @@
 import express from 'express';
 import { db } from '../db/index.js';
 import { scoreAllPending, generateFollowup, translateMessages } from '../services/scoring.js';
-import { enrichFromGoogleMaps } from '../services/enrichment.js';
+import { enrichFromGoogleMaps, enrichLead } from '../services/enrichment.js';
 
 export const leads = express.Router();
 
@@ -21,8 +21,24 @@ leads.get('/', (req, res) => {
 leads.post('/:id/enrich', async (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });
-  const r = await enrichFromGoogleMaps(lead);
+  const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+  const r = await enrichLead(lead, campaign);
   res.json({ ok: true, ...r });
+});
+
+leads.post('/enrich-all', async (_req, res) => {
+  const pending = db.prepare('SELECT l.*, c.location FROM leads l LEFT JOIN campaigns c ON l.campaign_id = c.id WHERE l.score IS NULL').all();
+  res.json({ started: true, total: pending.length });
+  (async () => {
+    for (const lead of pending) {
+      try {
+        const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+        await enrichLead(lead, campaign);
+        console.log(`[enrich-all] lead ${lead.id} done`);
+      } catch (e) { console.error(`[enrich-all] lead ${lead.id} failed:`, e.message); }
+    }
+    console.log(`[enrich-all] finished ${pending.length} leads`);
+  })();
 });
 
 leads.delete('/:id', (req, res) => {
