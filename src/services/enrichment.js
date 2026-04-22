@@ -17,9 +17,11 @@ function getRawObj(lead) {
   catch { return {}; }
 }
 
-export async function enrichFromGoogleMaps(lead) {
-  const query = [lead.company || lead.name, 'Miami'].filter(Boolean).join(' ');
-  const items = await runActor('google_maps', { niche: query, location: 'Miami, FL', maxLeads: 1 });
+export async function enrichFromGoogleMaps(lead, campaign = {}) {
+  const loc = campaign.location || 'Miami, FL';
+  const firstLoc = loc.split(',')[0].trim();
+  const query = [lead.company || lead.name, firstLoc].filter(Boolean).join(' ');
+  const items = await runActor('google_maps', { niche: query, location: firstLoc, maxLeads: 1 });
   const match = items[0];
   if (!match) throw new Error('No se encontró en Google Maps');
   const reviews = extractReviewTexts(match);

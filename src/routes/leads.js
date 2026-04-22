@@ -21,9 +21,18 @@ leads.get('/', (req, res) => {
 leads.post('/:id/enrich', async (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });
-  const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
-  const r = await enrichLead(lead, campaign);
-  res.json({ ok: true, ...r });
+  try {
+    const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+    let gmaps = null;
+    if (!lead.rating) {
+      gmaps = await enrichFromGoogleMaps(lead, campaign);
+    }
+    const r = await enrichLead(lead, campaign);
+    res.json({ ok: true, gmaps, ...r });
+  } catch (e) {
+    console.error(`[enrich] lead ${lead.id} failed:`, e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 leads.post('/enrich-all', async (_req, res) => {
