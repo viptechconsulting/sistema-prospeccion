@@ -2,6 +2,7 @@ import express from 'express';
 import Anthropic from '@anthropic-ai/sdk';
 import { db } from '../db/index.js';
 import { runActor, normalizeLead } from '../services/apify.js';
+import { enrichLead } from '../services/enrichment.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -36,7 +37,7 @@ Reglas:
 - Si no especifica cantidad, usa 25
 - Detecta el idioma del prompt para "language"
 - "niche" debe ser conciso: "dentistas", "spas", "agencias de marketing"
-- "location" debe ser lo más específico posible`,
+- "location": si el usuario menciona VARIAS ciudades, devolvé TODAS separadas por coma. Ejemplo: "Miami, Orlando, Tampa". Si es una sola, devolvé solo esa.`,
       messages: [{ role: 'user', content: prompt }]
     });
 
@@ -72,7 +73,14 @@ campaigns.post('/', async (req, res) => {
 
   (async () => {
     try {
-      let items = await runActor(platform, { niche, location, keywords, maxLeads });
+      const locations = location ? location.split(',').map(l => l.trim()).filter(Boolean) : [''];
+      const perCity = Math.ceil(maxLeads / (locations.length || 1));
+      let items = [];
+      for (const loc of locations) {
+        console.log(`[campaign ${campaignId}] scraping ${loc || 'sin ubicación'}…`);
+        const cityItems = await runActor(platform, { niche, location: loc, keywords, maxLeads: perCity });
+        items.push(...cityItems);
+      }
       if (platform === 'google_serp') {
         const all = [];
         for (const page of items) {
@@ -92,6 +100,22 @@ campaigns.post('/', async (req, res) => {
         }
       });
       tx(items);
+
+      const insertedLeads = db.prepare('SELECT * FROM leads WHERE campaign_id = ? AND score IS NULL').all(campaignId);
+      const campaignRow = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(campaignId);
+      db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run('enriching', campaignId);
+
+      let enriched = 0;
+      for (const lead of insertedLeads) {
+        try {
+          await enrichLead(lead, campaignRow);
+          enriched++;
+          console.log(`[enrich] lead ${lead.id} (${lead.name}) done (${enriched}/${insertedLeads.length})`);
+        } catch (e) {
+          console.error(`[enrich] lead ${lead.id} failed:`, e.message);
+        }
+      }
+      console.log(`[enrich] campaign ${campaignId}: ${enriched}/${insertedLeads.length} leads enriched`);
       db.prepare('UPDATE campaigns SET status = ? WHERE id = ?').run('done', campaignId);
     } catch (err) {
       console.error('campaign failed', err);

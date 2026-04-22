@@ -187,15 +187,40 @@ function channelSpecs(lang) {
 Idioma de TODOS los mensajes: ${lang}.`;
 }
 
+function parseRawData(lead) {
+  try { return typeof lead.raw_data === 'string' ? JSON.parse(lead.raw_data) : (lead.raw_data || {}); }
+  catch { return {}; }
+}
+
+function buildSerpSection(rawObj) {
+  const serp = rawObj.serp;
+  if (!serp) return '- SERP: No se corrió búsqueda Google (sin datos)';
+  if (!serp.domain_found) return `- SERP: Buscamos "${serp.query_used}" — el dominio del lead NO aparece en los primeros ${serp.total_results} resultados. Competidores que SÍ aparecen:\n${serp.top_competitors.map(c => `  * Pos ${c.position}: ${c.title} (${c.url})`).join('\n')}`;
+  return `- SERP: Buscamos "${serp.query_used}" — el dominio SÍ aparece:\n${serp.domain_positions.map(p => `  * Pos ${p.position}: ${p.title}`).join('\n')}\n  Competidores cercanos:\n${serp.top_competitors.map(c => `  * Pos ${c.position}: ${c.title} (${c.url})`).join('\n')}`;
+}
+
+function buildAdsSection(rawObj) {
+  const ads = rawObj.meta_ads;
+  if (!ads) return '- Meta Ads: No se corrió búsqueda de ads (sin datos)';
+  if (ads.total_ads_found === 0) return '- Meta Ads: Se buscó en Facebook Ads Library — NO se encontraron ads activos para este negocio';
+  const platforms = ads.platforms_detected.length ? ads.platforms_detected.join(', ') : 'no especificadas';
+  let section = `- Meta Ads: ${ads.total_ads_found} ads encontrados (${ads.ads_active} activos). Plataformas: ${platforms}`;
+  if (ads.ads_sample?.length) {
+    section += '\n  Muestra de ads:';
+    for (const ad of ads.ads_sample) {
+      section += `\n  * "${ad.body.slice(0, 100)}${ad.body.length > 100 ? '...' : ''}" | CTA: ${ad.cta || 'N/A'} | Link: ${ad.link || 'N/A'}`;
+    }
+  }
+  return section;
+}
+
 function leadSummary(lead, campaign) {
   const reviews = getReviewsForLead(lead);
-  const reviewsSummary = reviews.length ? `\nREVIEWS (${reviews.length}):\n${reviews.slice(0, 20).map(r => `- [${r.rating || '?'}★] ${r.text.slice(0, 200)}`).join('\n')}` : '';
-  const ratingInfo = lead.rating ? `- Rating Google: ${lead.rating}★ (${lead.review_count || 0} reviews)${lead.rating <= 4.3 ? ' [RATING BAJO]' : ''}` : '';
-  const topPos = lead.top_positive ? `- Patrón positivo recurrente: ${lead.top_positive}` : '';
-  const topNeg = lead.top_negative ? `- Queja recurrente: ${lead.top_negative}` : '';
-
-  const adsInfo = lead.has_ads ? `- Inversión en marketing: ${lead.has_ads}` : '';
-  const seoInfo = lead.seo_audit ? `- Auditoría SEO: ${lead.seo_audit}` : '';
+  const rawObj = parseRawData(lead);
+  const reviewsSummary = reviews.length ? `\nREVIEWS REALES (${reviews.length}):\n${reviews.slice(0, 20).map(r => `- [${r.rating || '?'}★] ${r.text.slice(0, 200)}`).join('\n')}` : '\nREVIEWS: No hay reviews en los datos.';
+  const ratingInfo = lead.rating ? `- Rating Google: ${lead.rating}★ (${lead.review_count || 0} reviews)${lead.rating <= 4.3 ? ' [RATING BAJO]' : ''}` : '- Rating: Sin datos';
+  const topPos = lead.top_positive ? `- Patrón positivo recurrente (previo): ${lead.top_positive}` : '';
+  const topNeg = lead.top_negative ? `- Queja recurrente (previa): ${lead.top_negative}` : '';
 
   return `DATOS DEL SERVICIO (mío):
 - Servicio ofrecido: ${campaign.service_offered || getSetting('my_company_info')}
@@ -209,11 +234,13 @@ DATOS DEL LEAD:
 - URL/perfil: ${lead.profile_url || 'N/A'}
 - Website: ${lead.website || 'SIN WEBSITE'}
 ${ratingInfo}
-${adsInfo}
-${seoInfo}
 ${topPos}
-${topNeg}${reviewsSummary}
-- Resumen crudo: ${(lead.raw_data || '').slice(0, 1200)}`;
+${topNeg}
+
+DATOS DE ENRICHMENT (obtenidos por scraping real — FIABLES):
+${buildSerpSection(rawObj)}
+${buildAdsSection(rawObj)}
+${reviewsSummary}`;
 }
 
 function resolveLang(campaign) {
@@ -228,29 +255,106 @@ export async function scoreLead(lead, campaign = {}) {
 
   const user = `${leadSummary(lead, campaign)}
 
-CRITERIO DE LEAD IDEAL (para calificar): ${criteria}
+CRITERIO DE LEAD IDEAL (referencia): ${criteria}
 
-TAREA:
-1) Calificá el lead del 1 al 10 (presencia digital, tamaño, señales de necesidad, presupuesto).
-2) Si hay 3+ reviews en los datos: identificá EL patrón positivo más repetido y LA queja más repetida (frases cortas ≤12 palabras). Si hay menos de 3 reviews: devolvé null en esos campos.
-3) INVERSIÓN EN MARKETING: Revisá los datos crudos del lead. Indicá si hay evidencia de que invierte en publicidad (Meta Ads, Google Ads, ads activos mencionados en los datos). Devolvé un string corto tipo "Meta Ads activos", "Google Ads detectados", "Meta + Google Ads", o "Sin ads detectados". SOLO basado en datos reales que aparezcan, NO inventes.
-4) AUDITORÍA SEO RÁPIDA (solo si hay website): Basándote en los datos disponibles del lead, hacé un checklist rápido de problemas probables. NO hagas auditorías técnicas complejas. Enfocate en:
-   - Titles mal optimizados
-   - Meta descriptions inexistentes
-   - Encabezados mal estructurados
-   - Keywords no trabajadas
-   TRADUCÍ cada problema a impacto de negocio. Ejemplo: NO digas "H1 mal estructurado", SÍ decí "Estás perdiendo X búsquedas mensuales porque Google no entiende de qué va tu página". Devolvé un string corto (2-4 frases) con los hallazgos traducidos a negocio. Si no hay website: "Sin website — sin presencia orgánica".
-5) Generá el MENSAJE 1 — Día 1 en 4 canales. Usá la info de inversión en marketing y auditoría SEO para personalizar. Si tienen ads activos → es señal de presupuesto, mencioná sutilmente. Si la auditoría detectó oportunidades → úsalas como gancho (traducidas a negocio, no técnicas).
-   - NUNCA inventes campañas, CTAs, porcentajes, cifras de conversión o features del negocio.
+REGLA CRÍTICA DE VERACIDAD:
+- Los "DATOS DE ENRICHMENT" fueron obtenidos por scraping real. USÁLOS tal cual.
+- Si un dato dice "No se corrió búsqueda" o "sin datos", usá "Sin datos disponibles".
+- NUNCA inventes posiciones de Google, títulos de ads, porcentajes, cifras de conversión, ni features que no estén en los datos.
+- Para reviews: solo analizá las que aparecen en "REVIEWS REALES". Menos de 3 → null.
+
+═══════════════════════════════════════════
+PIPELINE DE CALIFICACIÓN — 7 PASOS
+═══════════════════════════════════════════
+
+Evaluá cada paso secuencialmente. Cada paso devuelve pass (true/false) y reason (1 frase corta).
+
+PASO 1 — ¿ES UN NEGOCIO LOCAL REAL?
+- ¿Tiene nombre de negocio, dirección/ubicación o perfil verificable?
+- ¿Es un negocio que atiende clientes en una zona geográfica específica?
+- Descartá: freelancers sin negocio, páginas personales, directorios, agregadores.
+
+PASO 2 — ¿ESTÁ ACTIVO?
+- ¿Tiene señales de actividad reciente? (reviews recientes, posts en redes, website actualizado, ads corriendo)
+- ¿El negocio parece estar operando actualmente?
+- Descartá: negocios cerrados, perfiles abandonados, sin actividad visible.
+
+PASO 3 — ¿PARECE COMERCIALMENTE SÓLIDO?
+- ¿Tiene indicadores de madurez? (años operando, volumen de reviews, múltiples ubicaciones, empleados)
+- ¿Parece tener capacidad de inversión? (no es ultra-micro ni recién abierto sin tracción)
+- No necesita ser grande — necesita ser estable y con ingresos.
+
+PASO 4 — ¿DEPENDE DEL CANAL DIGITAL?
+- ¿Su modelo de negocio requiere captar clientes por internet? (reservas online, e-commerce, leads digitales)
+- ¿Ya tiene presencia digital? (website, Google Maps, redes sociales activas, ads)
+- Señales fuertes: tiene website + redes + Google Maps. Señal débil: solo tiene un listing básico.
+
+PASO 5 — ¿TIENE INTENCIÓN CLARA DE CAPTAR CLIENTES?
+- ¿Invierte en marketing? (Meta Ads activos, Google Ads, SEO, contenido en redes)
+- ¿Tiene CTAs visibles? (formularios, botones de reserva, WhatsApp Business)
+- ¿Publica ofertas, promociones o contenido orientado a captar?
+- Si NO invierte en nada → probablemente no está listo para comprar servicios de marketing.
+
+PASO 6 — ¿HAY FRICCIÓN O MEJORA POSIBLE EN CONVERSIÓN?
+- ¿Su website tiene problemas obvios? (sin formulario, sin CTA claro, no mobile-friendly, lento)
+- ¿Tiene reviews negativas que revelan problemas operativos? (mala atención, demoras, falta de respuesta)
+- ¿No aparece bien posicionado en Google pese a tener competidores que sí?
+- ¿Sus ads no tienen landing pages optimizadas?
+- ¿Hay gap entre su inversión en captar y su capacidad de convertir?
+- Si todo está perfecto → el lead es menos prioritario (no necesita ayuda).
+
+PASO 7 — SCORE FINAL Y PRIORIDAD
+Basándote en los 6 pasos anteriores:
+- Falla paso 1, 2 o 3 → score ≤ 3 (descartar)
+- Pasa 1-3 pero falla 4 y 5 → score 4-5 (bajo potencial digital)
+- Pasa 1-5 pero no hay mejora posible (paso 6) → score 5-6 (ya está optimizado)
+- Pasa 1-5 Y hay mejoras claras (paso 6) → score 7-10 según magnitud de la oportunidad
+- Score 9-10: oportunidad perfecta (invierte, necesita ayuda, tiene presupuesto)
+
+═══════════════════════════════════════════
+DATOS ADICIONALES A EXTRAER
+═══════════════════════════════════════════
+
+- top_positive / top_negative: si hay 3+ reviews reales, patrón positivo y queja más repetidos (≤12 palabras). Menos de 3 → null.
+- has_ads: resumen de Meta Ads (cantidad, plataformas, CTA) o "Sin ads detectados" o "Sin datos disponibles".
+- seo_audit: posición en SERP + competidores, o "No aparece en primeros X resultados", o "Sin datos disponibles".
+
+═══════════════════════════════════════════
+GENERACIÓN DE MENSAJES (solo si score ≥ 4)
+═══════════════════════════════════════════
+
+Si el score es ≥ 4, generá MENSAJE 1 — Día 1 en 4 canales. Personalizá con datos REALES:
+- Si tiene ads activos → mencioná como señal de que ya invierte.
+- Si no aparece en Google → usá como gancho.
+- Si tiene reviews negativas → usá la queja real como pain point.
+- Usá las fricciones detectadas en paso 6 como ángulo de entrada.
+Si score < 4, devolvé messages como null.
 
 ${channelSpecs(lang)}
 
 Devuelve JSON estricto:
-{"score": number, "reason": string, "top_positive": string|null, "top_negative": string|null, "has_ads": string, "seo_audit": string, "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
+{
+  "pipeline": [
+    {"step": 1, "name": "negocio_local_real", "pass": boolean, "reason": string},
+    {"step": 2, "name": "activo", "pass": boolean, "reason": string},
+    {"step": 3, "name": "comercialmente_solido", "pass": boolean, "reason": string},
+    {"step": 4, "name": "depende_digital", "pass": boolean, "reason": string},
+    {"step": 5, "name": "intencion_captar", "pass": boolean, "reason": string},
+    {"step": 6, "name": "friccion_conversion", "pass": boolean, "reason": string},
+    {"step": 7, "name": "score_final", "pass": true, "reason": string}
+  ],
+  "score": number,
+  "reason": string,
+  "top_positive": string|null,
+  "top_negative": string|null,
+  "has_ads": string,
+  "seo_audit": string,
+  "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string} | null
+}`;
 
   const resp = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 3000,
+    max_tokens: 4000,
     system: OUTREACH_SYSTEM,
     messages: [{ role: 'user', content: user }]
   });
@@ -260,6 +364,7 @@ Devuelve JSON estricto:
   return {
     score: Math.max(1, Math.min(10, Number(parsed.score) || 0)),
     reason: String(parsed.reason || ''),
+    pipeline: parsed.pipeline || [],
     top_positive: parsed.top_positive || null,
     top_negative: parsed.top_negative || null,
     has_ads: parsed.has_ads || 'Sin datos',
@@ -271,7 +376,7 @@ Devuelve JSON estricto:
 export async function scoreAllPending(limit = 50) {
   const minScore = Number(getSetting('min_score')) || 4;
   const leads = db.prepare('SELECT * FROM leads WHERE score IS NULL LIMIT ?').all(limit);
-  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ?, has_ads = ?, seo_audit = ? WHERE id = ?`);
+  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ?, has_ads = ?, seo_audit = ?, qualification_pipeline = ? WHERE id = ?`);
   const campStmt = db.prepare('SELECT * FROM campaigns WHERE id = ?');
   let done = 0, failed = 0;
   for (const lead of leads) {
@@ -279,7 +384,7 @@ export async function scoreAllPending(limit = 50) {
       const campaign = lead.campaign_id ? campStmt.get(lead.campaign_id) : {};
       const r = await scoreLead(lead, campaign);
       const status = r.score < minScore ? 'descartado' : lead.status;
-      upd.run(r.score, r.reason, JSON.stringify(r.messages), status, r.top_positive, r.top_negative, r.has_ads, r.seo_audit, lead.id);
+      upd.run(r.score, r.reason, JSON.stringify(r.messages || {}), status, r.top_positive, r.top_negative, r.has_ads, r.seo_audit, JSON.stringify(r.pipeline), lead.id);
       done++;
     } catch (e) {
       console.error('score failed', lead.id, e.message);

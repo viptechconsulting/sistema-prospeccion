@@ -150,6 +150,7 @@ async function openLead(id) {
     <div><span class="score">${lead.score ?? '?'}</span> · <strong>${STATUS_LABELS[lead.status]}</strong> · Follow-ups: ${lead.followup_count || 0}</div>
     ${contactCard}
     ${lead.score_reason ? `<div class="reason">${escapeHtml(lead.score_reason)}</div>` : ''}
+    ${buildPipelineHtml(lead.qualification_pipeline)}
 
     ${parsed ? `
     <div class="tabs">
@@ -268,13 +269,58 @@ async function loadSettings() {
     ['qualification_criteria', 'Criterios de lead ideal', 'textarea'],
     ['my_company_info', 'Info de mi empresa/servicio', 'textarea']
   ];
+  const presetSections = [
+    ['presets_service_offered', 'Servicios ofrecidos'],
+    ['presets_main_benefit', 'Beneficios principales'],
+    ['presets_key_differential', 'Diferenciales clave']
+  ];
+  const presetsHtml = presetSections.map(([key, label]) => {
+    let items = [];
+    try { items = JSON.parse(s[key] || '[]'); } catch {}
+    const itemsHtml = items.map((v, i) => `<div class="preset-item" data-key="${key}" data-idx="${i}"><span>${escapeHtml(v)}</span><button type="button" class="preset-del" data-key="${key}" data-idx="${i}">✕</button></div>`).join('') || '<div style="color:#555;font-size:11px">Sin opciones guardadas</div>';
+    return `<div class="preset-section"><h3 style="color:#00ff88;font-size:13px;margin:16px 0 8px">${label}</h3>${itemsHtml}<div class="preset-add-row"><input class="preset-new-input" data-key="${key}" placeholder="Agregar nuevo…"/><button type="button" class="btn-add-preset-settings primary" data-key="${key}">+</button></div></div>`;
+  }).join('');
+
   $('#settings-form').innerHTML = fields.map(([k, label, type, masked]) => {
     const val = s[k] || '';
     if (type === 'textarea') return `<label>${label}<textarea name="${k}">${escapeHtml(val)}</textarea></label>`;
     return `<label>${label}<input name="${k}" value="${escapeHtml(masked ? maskToken(val) : val)}" ${masked?'data-masked="1"':''}/></label>`;
-  }).join('') + `<button class="primary" type="submit">Guardar</button>`;
+  }).join('') + `<hr style="border-color:#2a2a2a;margin:20px 0"><h2 style="font-size:15px;color:#ccc;margin-bottom:4px">Presets de campaña</h2><p style="color:#555;font-size:11px;margin:0 0 10px">Estas opciones aparecen precargadas al crear una campaña nueva.</p>${presetsHtml}<hr style="border-color:#2a2a2a;margin:20px 0"><button class="primary" type="submit">Guardar settings</button>`;
 }
 function maskToken(v) { return v && v.length > 8 ? '••••' + v.slice(-4) : v; }
+
+$('#settings-form').addEventListener('click', async (e) => {
+  const del = e.target.closest('.preset-del');
+  if (del) {
+    const key = del.dataset.key;
+    const idx = Number(del.dataset.idx);
+    const s = await api('/api/settings');
+    let items = [];
+    try { items = JSON.parse(s[key] || '[]'); } catch {}
+    items.splice(idx, 1);
+    await api('/api/settings', { method: 'POST', body: JSON.stringify({ [key]: JSON.stringify(items) }) });
+    toast('Eliminado');
+    loadSettings();
+    loadPresets();
+    return;
+  }
+  const add = e.target.closest('.btn-add-preset-settings');
+  if (add) {
+    const key = add.dataset.key;
+    const input = $(`.preset-new-input[data-key="${key}"]`);
+    const val = input?.value?.trim();
+    if (!val) return toast('Escribí un valor', true);
+    const s = await api('/api/settings');
+    let items = [];
+    try { items = JSON.parse(s[key] || '[]'); } catch {}
+    if (items.includes(val)) return toast('Ya existe');
+    items.push(val);
+    await api('/api/settings', { method: 'POST', body: JSON.stringify({ [key]: JSON.stringify(items) }) });
+    toast('Agregado');
+    loadSettings();
+    loadPresets();
+  }
+});
 
 $('#settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -342,6 +388,61 @@ $('#btn-parse-prompt').onclick = async () => {
   }
 };
 
+// presets
+const PRESET_KEYS = {
+  serviceOffered: 'presets_service_offered',
+  mainBenefit: 'presets_main_benefit',
+  keyDifferential: 'presets_key_differential'
+};
+let presetsCache = {};
+
+async function loadPresets() {
+  const s = await api('/api/settings');
+  for (const [field, key] of Object.entries(PRESET_KEYS)) {
+    try { presetsCache[field] = JSON.parse(s[key] || '[]'); } catch { presetsCache[field] = []; }
+  }
+  populatePresetSelects();
+}
+
+function populatePresetSelects() {
+  for (const [field, items] of Object.entries(presetsCache)) {
+    const sel = $(`.preset-select[data-target="${field}"]`);
+    if (!sel) continue;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">-- Seleccionar guardado --</option>' +
+      items.map((v, i) => `<option value="${i}">${escapeHtml(v.length > 60 ? v.slice(0, 57) + '...' : v)}</option>`).join('');
+    sel.value = current;
+  }
+}
+
+document.addEventListener('change', (e) => {
+  const sel = e.target.closest('.preset-select');
+  if (!sel) return;
+  const field = sel.dataset.target;
+  const idx = sel.value;
+  if (idx === '' || !presetsCache[field]) return;
+  const form = $('#modal-campaign form');
+  if (form.elements[field]) form.elements[field].value = presetsCache[field][idx];
+});
+
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.btn-add-preset');
+  if (!btn) return;
+  const field = btn.dataset.field;
+  const form = $('#modal-campaign form');
+  const val = form.elements[field]?.value?.trim();
+  if (!val) return toast('Escribí un valor primero', true);
+  if (!presetsCache[field]) presetsCache[field] = [];
+  if (presetsCache[field].includes(val)) return toast('Ya existe ese preset');
+  presetsCache[field].push(val);
+  const settingsKey = PRESET_KEYS[field];
+  await api('/api/settings', { method: 'POST', body: JSON.stringify({ [settingsKey]: JSON.stringify(presetsCache[field]) }) });
+  populatePresetSelects();
+  toast('Preset guardado');
+});
+
+loadPresets();
+
 // new campaign
 $('#btn-new').onclick = () => openCampaignModal();
 $('#modal-campaign .cancel').onclick = () => $('#modal-campaign').classList.add('hidden');
@@ -366,6 +467,29 @@ document.addEventListener('click', (e) => {
 });
 
 function escapeHtml(s) { return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+const PIPELINE_LABELS = {
+  negocio_local_real: 'Negocio local real',
+  activo: 'Activo',
+  comercialmente_solido: 'Comercialmente sólido',
+  depende_digital: 'Depende del digital',
+  intencion_captar: 'Intención de captar',
+  friccion_conversion: 'Fricción/mejora en conversión',
+  score_final: 'Score final'
+};
+
+function buildPipelineHtml(raw) {
+  if (!raw) return '';
+  let steps;
+  try { steps = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch { return ''; }
+  if (!Array.isArray(steps) || !steps.length) return '';
+  const rows = steps.map(s => {
+    const icon = s.step === 7 ? '📊' : (s.pass ? '✅' : '❌');
+    const label = PIPELINE_LABELS[s.name] || s.name;
+    return `<div class="pipe-step"><span class="pipe-icon">${icon}</span><span class="pipe-label">${escapeHtml(label)}</span><span class="pipe-reason">${escapeHtml(s.reason || '')}</span></div>`;
+  }).join('');
+  return `<div class="pipeline"><h3 style="color:#aaa;font-size:12px;text-transform:uppercase;margin:12px 0 6px">Pipeline de calificación</h3>${rows}</div>`;
+}
 
 async function loadAll() {
   await Promise.all([loadMetrics(), loadLeads()]);
@@ -398,7 +522,10 @@ function openCampaignModal(prefill = {}) {
   for (const [src, field] of Object.entries(map)) {
     if (prefill[src] != null && form.elements[field]) form.elements[field].value = prefill[src];
   }
+  if (!prefill.service_offered && presetsCache.serviceOffered?.[0]) form.elements.serviceOffered.value = presetsCache.serviceOffered[0];
+  if (!prefill.main_benefit && presetsCache.mainBenefit?.[0]) form.elements.mainBenefit.value = presetsCache.mainBenefit[0];
+  if (!prefill.key_differential && presetsCache.keyDifferential?.[0]) form.elements.keyDifferential.value = presetsCache.keyDifferential[0];
   $('#modal-campaign').classList.remove('hidden');
 }
-function anyRunning() { return (state.campaigns || []).some(c => c.status === 'running'); }
+function anyRunning() { return (state.campaigns || []).some(c => c.status === 'running' || c.status === 'enriching'); }
 setInterval(() => { anyRunning() ? loadAll() : loadMetrics(); }, 4000);
