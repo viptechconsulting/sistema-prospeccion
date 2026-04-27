@@ -15,19 +15,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // Basic Auth
-const AUTH_USER = process.env.AUTH_USER || '';
-const AUTH_PASS = process.env.AUTH_PASS || '';
-if (AUTH_USER && AUTH_PASS) {
-  app.use((req, res, next) => {
-    const auth = req.headers['authorization'];
-    if (auth && auth.startsWith('Basic ')) {
-      const [user, pass] = Buffer.from(auth.slice(6), 'base64').toString().split(':');
-      if (user === AUTH_USER && pass === AUTH_PASS) return next();
-    }
-    res.set('WWW-Authenticate', 'Basic realm="Lynkro Copiloto"');
-    res.status(401).send('Acceso no autorizado');
-  });
-}
+const AUTH_USER = process.env.AUTH_USER || 'lynkroio_admin';
+const AUTH_PASS = process.env.AUTH_PASS || '3$mer@ldA$';
+app.use((req, res, next) => {
+  const auth = req.headers['authorization'];
+  if (auth && auth.startsWith('Basic ')) {
+    const decoded = Buffer.from(auth.slice(6), 'base64').toString();
+    const colon = decoded.indexOf(':');
+    const user = decoded.slice(0, colon);
+    const pass = decoded.slice(colon + 1);
+    if (user === AUTH_USER && pass === AUTH_PASS) return next();
+  }
+  res.set('WWW-Authenticate', 'Basic realm="Lynkro Copiloto"');
+  res.status(401).send('Acceso no autorizado');
+});
 
 app.use(express.json({ limit: '2mb' }));
 app.use(express.static(path.resolve(__dirname, '../public')));
