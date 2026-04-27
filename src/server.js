@@ -3,6 +3,7 @@ dotenv.config({ override: true });
 import express from 'express';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import crypto from 'node:crypto';
 import { db } from './db/index.js';
 import { campaigns } from './routes/campaigns.js';
 import { leads } from './routes/leads.js';
@@ -14,23 +15,50 @@ import { startScheduler } from './services/scheduler.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
-// Basic Auth
+// Auth config
 const AUTH_USER = process.env.AUTH_USER || 'lynkroio_admin';
 const AUTH_PASS = process.env.AUTH_PASS || '3$mer@ldA$';
-app.use((req, res, next) => {
-  const auth = req.headers['authorization'];
-  if (auth && auth.startsWith('Basic ')) {
-    const decoded = Buffer.from(auth.slice(6), 'base64').toString();
-    const colon = decoded.indexOf(':');
-    const user = decoded.slice(0, colon);
-    const pass = decoded.slice(colon + 1);
-    if (user === AUTH_USER && pass === AUTH_PASS) return next();
-  }
-  res.set('WWW-Authenticate', 'Basic realm="Lynkro Copiloto"');
-  res.status(401).send('Acceso no autorizado');
-});
+const SESSION_TOKEN = crypto.randomBytes(32).toString('hex');
+const COOKIE_NAME = 'lynkro_session';
+
+function parseCookies(req) {
+  const raw = req.headers['cookie'] || '';
+  return Object.fromEntries(raw.split(';').map(c => c.trim().split('=').map(decodeURIComponent)));
+}
+
+function isAuthenticated(req) {
+  return parseCookies(req)[COOKIE_NAME] === SESSION_TOKEN;
+}
 
 app.use(express.json({ limit: '2mb' }));
+
+// Login endpoint — public
+app.post('/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (username === AUTH_USER && password === AUTH_PASS) {
+    res.setHeader('Set-Cookie', `${COOKIE_NAME}=${SESSION_TOKEN}; Path=/; HttpOnly; SameSite=Lax`);
+    return res.json({ ok: true });
+  }
+  res.status(401).json({ error: 'Credenciales incorrectas' });
+});
+
+// Logout endpoint — public
+app.post('/auth/logout', (_req, res) => {
+  res.setHeader('Set-Cookie', `${COOKIE_NAME}=; Path=/; HttpOnly; Max-Age=0`);
+  res.json({ ok: true });
+});
+
+// Auth guard — runs before static files and API routes
+app.use((req, res, next) => {
+  // Allow login page and login endpoint
+  if (req.path === '/login.html' || req.path.startsWith('/auth/')) return next();
+  if (isAuthenticated(req)) return next();
+  // API calls get 401 JSON
+  if (req.path.startsWith('/api/')) return res.status(401).json({ error: 'No autenticado' });
+  // Everything else → redirect to login
+  res.redirect('/login.html');
+});
+
 app.use(express.static(path.resolve(__dirname, '../public')));
 
 app.get('/api/health', (_req, res) => {
