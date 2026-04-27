@@ -16,7 +16,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const app = express();
 
 // Auth config
-const AUTH_USER = process.env.AUTH_USER || 'lynkroio_admin';
+const AUTH_USER = process.env.AUTH_USER || 'lynkroio';
 const AUTH_PASS = process.env.AUTH_PASS || '3$mer@ldA$';
 const SESSION_TOKEN = crypto.randomBytes(32).toString('hex');
 const COOKIE_NAME = 'lynkro_session';
