@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Lynkro Prospección System</title>
+<title>Lynkro — Copiloto Comercial</title>
 <link rel="stylesheet" href="/app.css"/>
 </head>
 <body>
 <header>
-  <h1>Lynkro Prospección System</h1>
+  <h1>Lynkro — Copiloto Comercial</h1>
   <nav>
     <button data-view="kanban" class="active">Kanban</button>
     <button data-view="table">Tabla</button>
@@ -23,20 +23,15 @@
 <section id="filters" class="filters">
   <select id="f-campaign"><option value="">Todas las campañas</option></select>
   <select id="f-platform"><option value="">Todas las plataformas</option><option value="google_maps">Google Maps</option><option value="linkedin">LinkedIn</option><option value="instagram">Instagram</option><option value="meta_ads">Meta Ads</option><option value="google_serp">Google SERP</option></select>
-  <select id="f-status"><option value="">Todos los estados</option><option value="por_contactar">Por contactar</option><option value="mensaje_enviado">Mensaje enviado</option><option value="followup_pendiente">Follow-up pendiente</option><option value="reunion_agendada">Reunión agendada</option><option value="descartado">Descartado</option></select>
+  <select id="f-status"><option value="">Todos los estados</option><option value="nuevo">Nuevo</option><option value="analizado">Analizado</option><option value="estrategia_lista">Estrategia lista</option><option value="mensaje_listo">Mensaje listo</option><option value="contactado">Contactado</option><option value="respondio">Respondió</option><option value="interesado">Interesado</option><option value="objecion">Objeción</option><option value="demo_propuesta">Demo propuesta</option><option value="demo_agendada">Demo agendada</option><option value="propuesta_enviada">Propuesta enviada</option><option value="cerrado_ganado">Cerrado ganado</option><option value="cerrado_perdido">Cerrado perdido</option><option value="reactivar_despues">Reactivar después</option></select>
   <input id="f-score" type="number" min="1" max="10" placeholder="Score min"/>
   <select id="f-web"><option value="">Web: todos</option><option value="yes">Con web</option><option value="no">Sin web</option></select>
-  <button id="btn-score">Calificar pendientes</button>
+  <button id="btn-score">Analizar pendientes</button>
   <button id="btn-refresh">↻</button>
 </section>
 
 <main id="view-kanban" class="view active">
-  <div class="kanban">
-    <div class="col" data-status="por_contactar"><h3>Por contactar <span class="n"></span></h3><div class="items"></div></div>
-    <div class="col" data-status="mensaje_enviado"><h3>Mensaje enviado <span class="n"></span></h3><div class="items"></div></div>
-    <div class="col" data-status="followup_pendiente"><h3>Follow-up pendiente <span class="n"></span></h3><div class="items"></div></div>
-    <div class="col" data-status="reunion_agendada"><h3>Reunión agendada <span class="n"></span></h3><div class="items"></div></div>
-  </div>
+  <div class="kanban" id="kanban-board"></div>
 </main>
 
 <main id="view-table" class="view">
@@ -59,8 +54,8 @@
   <form class="card">
     <h2>Nueva campaña</h2>
     <div id="prompt-section" style="border:1px solid #333;border-radius:8px;padding:12px;margin-bottom:16px;background:#1a1a2e">
-      <label style="color:#00ff88;font-weight:600;font-size:13px">Búsqueda con IA<textarea id="campaign-prompt" rows="3" placeholder="Ej: Búscame 20 dentistas en San Juan, Puerto Rico con su teléfono, dirección y calificación en Google Maps" style="margin-top:6px"></textarea></label>
-      <button type="button" id="btn-parse-prompt" class="primary" style="margin-top:8px;width:100%">Analizar con IA</button>
+      <label style="color:#00ff88;font-weight:600;font-size:13px">Búsqueda inteligente<textarea id="campaign-prompt" rows="3" placeholder="Ej: Búscame 20 dentistas en San Juan, Puerto Rico con su teléfono, dirección y calificación en Google Maps" style="margin-top:6px"></textarea></label>
+      <button type="button" id="btn-parse-prompt" class="primary" style="margin-top:8px;width:100%">Analizar búsqueda</button>
       <div id="prompt-status" style="font-size:11px;color:#888;margin-top:6px"></div>
     </div>
     <div id="manual-fields">

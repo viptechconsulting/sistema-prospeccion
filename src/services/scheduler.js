@@ -1,6 +1,7 @@
 import cron from 'node-cron';
 import { db, getSetting } from '../db/index.js';
 import { generateFollowup } from './scoring.js';
+import { generateSmartFollowUp } from './strategy.js';
 
 async function tick() {
   const days = [
@@ -10,7 +11,7 @@ async function tick() {
   ];
   const maxF = Number(getSetting('max_followups')) || 3;
 
-  const all = db.prepare(`SELECT * FROM leads WHERE status = 'mensaje_enviado' AND contacted_at IS NOT NULL AND followup_count < ?`).all(maxF);
+  const all = db.prepare(`SELECT * FROM leads WHERE status IN ('contactado', 'mensaje_enviado') AND contacted_at IS NOT NULL AND followup_count < ?`).all(maxF);
   const now = Date.now();
   const candidates = all.filter(l => {
     const idx = l.followup_count || 0;
@@ -21,18 +22,24 @@ async function tick() {
 
   for (const lead of candidates) {
     try {
-      const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
-      const messages = await generateFollowup(lead, campaign);
-      db.prepare(`UPDATE leads SET status = 'followup_pendiente', suggested_message = ? WHERE id = ?`).run(JSON.stringify(messages), lead.id);
-      console.log(`[scheduler] follow-up generado lead ${lead.id}`);
+      const hasStrategy = db.prepare('SELECT id FROM lead_strategies WHERE lead_id = ? LIMIT 1').get(lead.id);
+      if (hasStrategy) {
+        await generateSmartFollowUp(lead.id);
+        console.log(`[scheduler] smart follow-up lead ${lead.id}`);
+      } else {
+        const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+        const messages = await generateFollowup(lead, campaign);
+        db.prepare(`UPDATE leads SET status = 'followup_pendiente', suggested_message = ? WHERE id = ?`).run(JSON.stringify(messages), lead.id);
+        console.log(`[scheduler] classic follow-up lead ${lead.id}`);
+      }
     } catch (e) {
       console.error(`[scheduler] fallo lead ${lead.id}:`, e.message);
     }
   }
 
   db.prepare(`
-    UPDATE leads SET status = 'descartado'
-    WHERE status IN ('mensaje_enviado','followup_pendiente')
+    UPDATE leads SET status = 'cerrado_perdido'
+    WHERE status IN ('contactado','mensaje_enviado','followup_pendiente')
       AND followup_count >= ?
       AND datetime(COALESCE(last_followup_at, contacted_at), '+' || ? || ' days') <= datetime('now')
   `).run(maxF, days[days.length - 1]);

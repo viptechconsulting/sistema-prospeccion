@@ -2,6 +2,7 @@ import express from 'express';
 import { db } from '../db/index.js';
 import { scoreAllPending, generateFollowup, translateMessages } from '../services/scoring.js';
 import { enrichFromGoogleMaps, enrichLead } from '../services/enrichment.js';
+import { generateStrategy, generateOutreachMessage, rewriteMessageTone, analyzeProspectReply, generateSmartFollowUp, logEvent, updateLeadStatus } from '../services/strategy.js';
 
 export const leads = express.Router();
 
@@ -60,10 +61,19 @@ leads.get('/metrics', (_req, res) => {
   const total = db.prepare('SELECT COUNT(*) AS n FROM leads').get().n;
   const byStatus = db.prepare('SELECT status, COUNT(*) AS n FROM leads GROUP BY status').all();
   const contacted = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE contacted_at IS NOT NULL").get().n;
-  const meetings = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'reunion_agendada'").get().n;
-  const responded = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status IN ('reunion_agendada','respondio')").get().n;
+  const meetings = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status IN ('demo_agendada','reunion_agendada')").get().n;
+  const responded = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status IN ('demo_agendada','reunion_agendada','respondio','interesado')").get().n;
   const responseRate = contacted ? (responded / contacted) : 0;
-  res.json({ total, contacted, meetings, responseRate, byStatus });
+  const strategies = db.prepare('SELECT COUNT(*) AS n FROM lead_strategies').get().n;
+  const messagesGenerated = db.prepare("SELECT COUNT(*) AS n FROM conversation_events WHERE event_type = 'message_generated'").get().n;
+  const repliesReceived = db.prepare("SELECT COUNT(*) AS n FROM conversation_events WHERE event_type = 'reply_analyzed'").get().n;
+  const demosProposed = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'demo_propuesta'").get().n;
+  const demosScheduled = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status IN ('demo_agendada','reunion_agendada')").get().n;
+  const followupsPending = db.prepare("SELECT COUNT(*) AS n FROM follow_up_recommendations WHERE status = 'pending'").get().n;
+  const interested = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'interesado'").get().n;
+  const won = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'cerrado_ganado'").get().n;
+  const toReactivate = db.prepare("SELECT COUNT(*) AS n FROM leads WHERE status = 'reactivar_despues'").get().n;
+  res.json({ total, contacted, meetings, responseRate, byStatus, strategies, messagesGenerated, repliesReceived, demosProposed, demosScheduled, followupsPending, interested, won, toReactivate });
 });
 
 leads.get('/:id', (req, res) => {
@@ -90,14 +100,15 @@ leads.post('/:id/mark-sent', (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });
   const { channel = 'whatsapp', content = '' } = req.body;
-  const isFollowup = lead.status === 'followup_pendiente' || (lead.followup_count || 0) > 0;
+  const isFollowup = ['followup_pendiente', 'contactado'].includes(lead.status) && (lead.followup_count || 0) > 0;
   const kind = isFollowup ? `followup_${lead.followup_count + 1}_${channel}` : `initial_${channel}`;
   db.prepare('INSERT INTO messages (lead_id, kind, content) VALUES (?,?,?)').run(lead.id, kind, content);
   if (isFollowup) {
-    db.prepare("UPDATE leads SET status = 'mensaje_enviado', last_followup_at = CURRENT_TIMESTAMP, followup_count = followup_count + 1 WHERE id = ?").run(lead.id);
+    db.prepare("UPDATE leads SET status = 'contactado', last_followup_at = CURRENT_TIMESTAMP, followup_count = followup_count + 1 WHERE id = ?").run(lead.id);
   } else {
-    db.prepare("UPDATE leads SET status = 'mensaje_enviado', contacted_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
+    db.prepare("UPDATE leads SET status = 'contactado', contacted_at = CURRENT_TIMESTAMP WHERE id = ?").run(lead.id);
   }
+  logEvent(lead.id, 'message_sent', { channel, direction: 'outbound', content: content.slice(0, 200), statusAfter: 'contactado' });
   res.json({ ok: true });
 });
 
@@ -115,8 +126,64 @@ leads.post('/:id/translate', async (req, res) => {
 leads.post('/:id/followup', async (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });
-  const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
-  const messages = await generateFollowup(lead, campaign);
-  db.prepare("UPDATE leads SET suggested_message = ?, status = 'followup_pendiente' WHERE id = ?").run(JSON.stringify(messages), lead.id);
-  res.json({ ok: true, messages });
+  try {
+    const result = await generateSmartFollowUp(lead.id);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    const campaign = lead.campaign_id ? db.prepare('SELECT * FROM campaigns WHERE id = ?').get(lead.campaign_id) : {};
+    const messages = await generateFollowup(lead, campaign);
+    db.prepare("UPDATE leads SET suggested_message = ?, status = 'followup_pendiente' WHERE id = ?").run(JSON.stringify(messages), lead.id);
+    res.json({ ok: true, messages });
+  }
+});
+
+leads.get('/:id/strategy', (req, res) => {
+  const strategy = db.prepare('SELECT * FROM lead_strategies WHERE lead_id = ? ORDER BY id DESC LIMIT 1').get(req.params.id);
+  res.json({ strategy: strategy || null });
+});
+
+leads.post('/:id/strategy', async (req, res) => {
+  try {
+    const { angle, tone } = req.body || {};
+    const result = await generateStrategy(Number(req.params.id), { angle, tone });
+    res.json({ ok: true, strategy: result });
+  } catch (e) {
+    console.error('[strategy]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+leads.post('/:id/outreach-message', async (req, res) => {
+  try {
+    const { channel, tone } = req.body || {};
+    const result = await generateOutreachMessage(Number(req.params.id), { channel, tone });
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[outreach-message]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+leads.post('/:id/rewrite-tone', async (req, res) => {
+  try {
+    const { style } = req.body || {};
+    if (!style) return res.status(400).json({ error: 'style required' });
+    const result = await rewriteMessageTone(Number(req.params.id), style);
+    res.json({ ok: true, ...result });
+  } catch (e) {
+    console.error('[rewrite-tone]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+leads.post('/:id/analyze-reply', async (req, res) => {
+  try {
+    const { reply_text, channel } = req.body || {};
+    if (!reply_text) return res.status(400).json({ error: 'reply_text required' });
+    const result = await analyzeProspectReply(Number(req.params.id), reply_text, channel);
+    res.json({ ok: true, analysis: result });
+  } catch (e) {
+    console.error('[analyze-reply]', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });

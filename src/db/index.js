@@ -23,6 +23,24 @@ for (const col of [['contact_person', 'TEXT'], ['website', 'TEXT'], ['instagram_
   try { db.prepare(`ALTER TABLE leads ADD COLUMN ${col[0]} ${col[1]}`).run(); } catch {}
 }
 
+// v2: Status migration
+const migrated = db.prepare("SELECT value FROM settings WHERE key = 'migration_copilot_v2'").get();
+if (!migrated) {
+  const statusMap = {
+    por_contactar: 'nuevo',
+    mensaje_enviado: 'contactado',
+    reunion_agendada: 'demo_agendada',
+    descartado: 'cerrado_perdido'
+  };
+  const migrate = db.transaction(() => {
+    for (const [oldS, newS] of Object.entries(statusMap)) {
+      db.prepare('UPDATE leads SET status = ? WHERE status = ?').run(newS, oldS);
+    }
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('migration_copilot_v2', '1')").run();
+  });
+  migrate();
+}
+
 const defaults = {
   delay_min_seconds: '30',
   delay_max_seconds: '90',
