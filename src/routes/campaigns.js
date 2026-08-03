@@ -50,7 +50,11 @@ Reglas:
     let parsed = null;
     try { if (start !== -1 && end !== -1) parsed = JSON.parse(text.slice(start, end + 1)); } catch {}
 
+    // ponytail: si la IA omite la plataforma pero hay nicho, asumir google_maps (regla del propio prompt)
+    if (parsed && !parsed.platform && parsed.niche) parsed.platform = 'google_maps';
+
     if (!parsed?.platform || !parsed?.niche) {
+      console.error('prompt sin niche/platform | input:', JSON.stringify(prompt).slice(0, 300), '| modelo:', text.slice(0, 300));
       return res.status(400).json({ error: 'No pude interpretar eso como una búsqueda. Describí solo A QUIÉN buscar (ej: "dentistas en Miami"). Los criterios de calificación van en Ajustes → Criterios de oportunidad ideal.' });
     }
 
