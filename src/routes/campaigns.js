@@ -15,7 +15,7 @@ campaigns.post('/prompt', async (req, res) => {
   try {
     const response = await client.messages.create({
       model: 'claude-haiku-4-5-20251001',
-      max_tokens: 500,
+      max_tokens: 1024,
       system: `Eres un parser de búsquedas de prospección. El usuario describe en lenguaje natural qué tipo de negocios/profesionales quiere buscar. Tu trabajo es extraer los parámetros estructurados para lanzar una búsqueda.
 
 Responde SOLO con JSON válido, sin markdown ni explicaciones:
@@ -43,20 +43,21 @@ Reglas:
 
     let text = response.content[0].text.trim();
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    // ponytail: el modelo a veces antepone/agrega prosa ("Entendido.") — quedarse con el objeto JSON
+    // ponytail: el modelo a veces antepone prosa o (si el input parece instrucciones) devuelve
+    // un JSON largo que se corta → JSON inválido. Ante cualquier fallo, guiar en vez de reventar.
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('respuesta sin JSON: ' + text.slice(0, 60));
-    const parsed = JSON.parse(text.slice(start, end + 1));
+    let parsed = null;
+    try { if (start !== -1 && end !== -1) parsed = JSON.parse(text.slice(start, end + 1)); } catch {}
 
-    if (!parsed.platform || !parsed.niche) {
-      return res.status(400).json({ error: 'No se pudo extraer plataforma o nicho del prompt' });
+    if (!parsed?.platform || !parsed?.niche) {
+      return res.status(400).json({ error: 'No pude interpretar eso como una búsqueda. Describí solo A QUIÉN buscar (ej: "dentistas en Miami"). Los criterios de calificación van en Ajustes → Criterios de oportunidad ideal.' });
     }
 
     res.json(parsed);
   } catch (err) {
     console.error('prompt parse failed', err);
-    res.status(500).json({ error: 'Error parseando prompt: ' + err.message });
+    res.status(500).json({ error: 'Error interpretando la búsqueda. Reformulá describiendo a quién buscar (ej: "spas en Miami").' });
   }
 });
 
