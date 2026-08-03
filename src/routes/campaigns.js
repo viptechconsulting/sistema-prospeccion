@@ -43,7 +43,11 @@ Reglas:
 
     let text = response.content[0].text.trim();
     text = text.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '');
-    const parsed = JSON.parse(text);
+    // ponytail: el modelo a veces antepone/agrega prosa ("Entendido.") — quedarse con el objeto JSON
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start === -1 || end === -1) throw new Error('respuesta sin JSON: ' + text.slice(0, 60));
+    const parsed = JSON.parse(text.slice(start, end + 1));
 
     if (!parsed.platform || !parsed.niche) {
       return res.status(400).json({ error: 'No se pudo extraer plataforma o nicho del prompt' });
