@@ -1,8 +1,30 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { db, getSetting } from '../db/index.js';
 import { getReviewsForLead } from './enrichment.js';
+import { calcularSegmento } from './segmentation.js';
+import { validateMessages } from './gatekeeper.js';
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Ángulo + tono sugeridos por segmento (Playbook §3.3/§3.4). Guía la generación.
+const SEGMENT_BRIEF = {
+  premium_establecido: 'Ángulo: demanda no captada / ventaja desaprovechada. Tono: consultivo o profesional. Reconocé su volumen y reputación como un hecho verificable, no lo cuestiones.',
+  premium_visible:     'Ángulo: capturar más demanda que ya llega. Tono: consultivo o directo. Su presencia es sólida; el gap es de conversión, no de reputación.',
+  mediano_solido:      'Ángulo: oportunidad oculta / mejora de conversión concreta. Tono: consultivo o relajado.',
+  mediano_general:     'Ángulo: oportunidad de crecimiento con datos verificables. Tono: relajado o directo, cercano.',
+  pequeno_local:       'Ángulo: calidad humana, ayuda concreta y accesible. Tono: relajado o suave, sin grandilocuencia.',
+  sin_datos:           'Datos públicos insuficientes. Tono: suave. No inventes señales; apoyate solo en lo que exista.',
+};
+
+// Principios inviolables (Playbook §2). Son la corrección de raíz del 0/21:
+// el mensaje debe pasar el gatekeeper o se regenera.
+const HARD_PRINCIPLES = `PRINCIPIOS DUROS (obligatorios — un mensaje que los viole se rechaza, EN CUALQUIER IDIOMA):
+1. Observación > pregunta. Afirmá lo que ves ("vi que…"), no interrogues ("¿cuántos…?"). PROHIBIDO: ¿cuántos/cuánto/cuánta…?, ¿cuánto tiempo tardas? / EN inglés igual de prohibido: "how many messages do you get", "how long does it take", "how much".
+2. Solo datos verificables públicamente (rating, reviews, web, redes, SERP reales). PROHIBIDO suponer sobre su operación interna: "apuesto a que…", "probablemente…", "seguramente no respondés…" / EN: "you're probably losing…", "most spas lose bookings", "I bet you…". PROHIBIDO inventar cifras del negocio.
+3. Valor antes de pedir: reconocimiento → insight verificable → propuesta concreta → CTA chico.
+4. Máximo 1 pregunta, siempre sobre el interés del prospecto ("¿vale la pena una llamada de 15 min?").
+5. Tono consistente (elegí UNO del brief del segmento). Sin críticas acumuladas al negocio.
+6. Cada mensaje debe poder firmarse con el nombre de un humano real.`;
 
 const OUTREACH_SYSTEM = `Eres Daniel, especialista en cold email & prospección B2B. Tu misión: crear campañas devastadoramente efectivas que generen leads, cierren citas y construyan confianza desde el primer contacto.
 
@@ -45,7 +67,7 @@ Ejemplos:
 
 ❌ "Hola, vimos tu negocio y nos encantaría trabajar contigo"
 ✅ "Vi que tu restaurante está en Google Maps hace más de 6 meses pero las reseñas no están optimizadas — eso mata el ranking local"
-✅ "Noté que tu página no tiene formulario de contacto explícito. Apuesto a que pierdes 2-3 consultas diarias por eso"
+✅ "Vi que tu página no tiene formulario de contacto visible — con el volumen de reseñas que tenés, cerrar ese hueco convierte más de las visitas que ya llegan" (observación verificable, SIN suponer cifras: nunca "apuesto a que pierdes X")
 
 Regla de oro: "Si el prospecto puede leer la primera línea sin que le genere curiosidad, pierdes la batalla"
 
@@ -77,9 +99,9 @@ NO pidas la venta. Pide una micro-acción que no cuesta nada.
 
 ❌ "¿Te gustaría agendar una reunión para discutir nuestros servicios?"
 ✅ "¿Eres vos el que maneja lo de marketing en el negocio o hay alguien más? Solo para saber a quién dirigir esto"
-✅ "Rápida pregunta: cuando dices que los leads no convierten bien, ¿el problema es cantidad o calidad?"
-✅ "¿10 minutos esta semana para mostrar específicamente qué estás dejando sobre la mesa?"
-✅ "¿Curiosidad genuina: cómo es tu proceso hoy para responder mensajes en horarios pico?"
+✅ "¿Vale la pena una llamada de 15 min esta semana para ver si aplica a tu caso?"
+✅ "¿Tiene sentido explorar esto en una conversación corta?"
+CTA prohibido (investigativo): NUNCA preguntes "¿cuántos…?", "¿cuánto tiempo tardas?", ni pidas datos internos del negocio.
 
 ### PILAR 6: FIRMA & CIERRE
 Breve, profesional y humana.
@@ -171,7 +193,9 @@ POR TICKET:
 
 El discovery de las 6 preguntas YA está resuelto: el usuario te pasa en cada prompt los 6 datos (diferencial, nicho, problema, resultado, región, ticket) dentro del bloque "DATOS DEL SERVICIO". NO repitas las preguntas, USA esos datos.
 
-REGLA DE VERACIDAD: No inventes hechos sobre el lead que no estén en los datos. Las cifras del sector (ej "30-40% pierden leads") sí se permiten porque son observaciones de industria, no del negocio específico.
+REGLA DE VERACIDAD: No inventes hechos sobre el lead que no estén en los datos. Evitá cifras del sector inventadas ("30-40% pierden leads"): preferí SIEMPRE una observación verificable del propio lead (sus reseñas, su web, su SERP real). Si necesitás un dato de industria, que sea genérico y no cuantificado.
+
+${HARD_PRINCIPLES}
 
 Devolvé SIEMPRE SOLO JSON válido, sin texto fuera del JSON.`;
 
@@ -252,8 +276,12 @@ function resolveLang(campaign) {
 export async function scoreLead(lead, campaign = {}) {
   const criteria = getSetting('qualification_criteria');
   const lang = resolveLang(campaign);
+  const seg = calcularSegmento(lead);
 
   const user = `${leadSummary(lead, campaign)}
+
+SEGMENTO DEL LEAD: ${seg.segment} (score huella pública ${seg.score}/100).
+${SEGMENT_BRIEF[seg.segment]}
 
 CRITERIO DE LEAD IDEAL (referencia): ${criteria}
 
@@ -361,22 +389,64 @@ Devuelve JSON estricto:
 
   const text = resp.content.find(c => c.type === 'text')?.text || '';
   const parsed = safeJSON(text);
+
+  // Gatekeeper: ningún mensaje llega al usuario sin validarse. Un regenerate si falla.
+  let messages = parsed.messages || {};
+  let validation = validateMessages(messages);
+  if (messages && Object.keys(messages).length && !validation.passed) {
+    messages = await regenerateMessages(user, messages, validation.byChannel, lang);
+    validation = validateMessages(messages);
+  }
+
   return {
     score: Math.max(1, Math.min(10, Number(parsed.score) || 0)),
     reason: String(parsed.reason || ''),
     pipeline: parsed.pipeline || [],
+    segment: seg.segment,
     top_positive: parsed.top_positive || null,
     top_negative: parsed.top_negative || null,
     has_ads: parsed.has_ads || 'Sin datos',
     seo_audit: parsed.seo_audit || 'Sin datos',
-    messages: parsed.messages || {}
+    messages,
+    validation
   };
+}
+
+// Regenera SOLO los mensajes que violaron el gatekeeper, inyectando el detalle del error.
+async function regenerateMessages(userContext, prevMessages, byChannel, lang) {
+  const errores = Object.entries(byChannel)
+    .map(([ch, errs]) => `- ${ch}: ${errs.map(e => e.description).join('; ')}`)
+    .join('\n');
+  const user = `${userContext}
+
+MENSAJES GENERADOS PREVIAMENTE (violaron reglas duras):
+${JSON.stringify(prevMessages, null, 2)}
+
+REGLAS VIOLADAS POR CANAL:
+${errores}
+
+TAREA: reescribí TODOS los mensajes cumpliendo estrictamente los PRINCIPIOS DUROS. Corregí exactamente las reglas violadas sin introducir otras. Idioma: ${lang}.
+Devolvé JSON estricto: {"messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
+
+  try {
+    const resp = await client.messages.create({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2000,
+      system: OUTREACH_SYSTEM,
+      messages: [{ role: 'user', content: user }]
+    });
+    const text = resp.content.find(c => c.type === 'text')?.text || '';
+    return safeJSON(text).messages || prevMessages;
+  } catch (e) {
+    console.error('regenerateMessages failed', e.message);
+    return prevMessages; // mejor esfuerzo; validation.passed=false marca revisión manual
+  }
 }
 
 export async function scoreAllPending(limit = 50) {
   const minScore = Number(getSetting('min_score')) || 4;
   const leads = db.prepare('SELECT * FROM leads WHERE score IS NULL LIMIT ?').all(limit);
-  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ?, has_ads = ?, seo_audit = ?, qualification_pipeline = ? WHERE id = ?`);
+  const upd = db.prepare(`UPDATE leads SET score = ?, score_reason = ?, suggested_message = ?, status = ?, top_positive = ?, top_negative = ?, has_ads = ?, seo_audit = ?, qualification_pipeline = ?, segment = ? WHERE id = ?`);
   const campStmt = db.prepare('SELECT * FROM campaigns WHERE id = ?');
   let done = 0, failed = 0;
   for (const lead of leads) {
@@ -384,7 +454,7 @@ export async function scoreAllPending(limit = 50) {
       const campaign = lead.campaign_id ? campStmt.get(lead.campaign_id) : {};
       const r = await scoreLead(lead, campaign);
       const status = r.score < minScore ? 'descartado' : lead.status;
-      upd.run(r.score, r.reason, JSON.stringify(r.messages || {}), status, r.top_positive, r.top_negative, r.has_ads, r.seo_audit, JSON.stringify(r.pipeline), lead.id);
+      upd.run(r.score, r.reason, JSON.stringify(r.messages || {}), status, r.top_positive, r.top_negative, r.has_ads, r.seo_audit, JSON.stringify(r.pipeline), r.segment || null, lead.id);
       done++;
     } catch (e) {
       console.error('score failed', lead.id, e.message);
