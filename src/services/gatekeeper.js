@@ -26,12 +26,15 @@ const RULES = [
   {
     code: 'NO_VALUE_PROP',
     description: 'No contiene propuesta de valor concreta',
-    test: (m) => !/(podemos|te\s+ayudamos|ayudamos|ayudo\b|nuestra\s+soluci[oó]n|lo\s+que\s+hacemos|automatiza(r|mos|ci[oó]n)|responder\s+m[aá]s\s+r[aá]pido|sin\s+(agregar|sumar)\s+personal|en\s+menos\s+de|we\s+(help|work\s+with)|helping\s+(them|you|businesses)|our\s+solution|what\s+we\s+do|automate|respond(ing)?\s+(faster|within|in\s+(under\s+)?\d)|without\s+adding|24\s*[\/x]?\s*7)/i.test(m),
+    // Reconoce también el valor implícito por velocidad/tecnología que estos mensajes usan
+    // ("<2 min", "instant", "real-time", "no code", "no hiring"), no solo el pitch explícito.
+    test: (m) => !/(podemos|te\s+ayudamos|ayudamos|ayudo\b|nuestra\s+soluci[oó]n|lo\s+que\s+hacemos|automatiza(r|mos|ci[oó]n)|responder\s+m[aá]s\s+r[aá]pido|sin\s+(agregar|sumar)\s+personal|en\s+menos\s+de|we\s+(help|work\s+with)|helping\s+(them|you|businesses)|our\s+solution|what\s+we\s+do|automate|respond(s|ing)?\s+(faster|instantly|to|in|within)|<\s*\d+\s*min|instant(ly|-message)?|real[-\s]?time|no[-\s]?cod(e|ing)|no\s+hiring|without\s+(adding|hiring|extra)|24\s*[\/x]?\s*7)/i.test(m),
   },
   {
     code: 'NO_SPECIFIC_CTA',
     description: 'Sin call-to-action específico de bajo rozamiento',
-    test: (m) => !/(llamada|conversaci[oó]n|\d+\s*min|¿\s*te\s+interesa|¿\s*tiene\s+sentido|vale\s+la\s+pena\s+explorar|¿\s*agendamos|¿\s*charlamos|¿\s*hablamos|quick\s+(call|chat)|does\s+it\s+make\s+sense|worth\s+(a\s+|exploring)|interested)/i.test(m),
+    // "15-min" (guion), "make sense", "worth exploring/10 min", "sounds relevant" también son CTAs válidos.
+    test: (m) => !/(llamada|conversaci[oó]n|\d+\s*-?\s*min|¿\s*te\s+interesa|¿\s*tiene\s+sentido|vale\s+la\s+pena|agendamos|charlamos|hablamos|quick\s+(call|chat|conversation)|makes?\s+sense|worth\s+\w+|to\s+explore|sounds?\s+(relevant|good)|does\s+(this|that|it)\s+(apply|interest|matter)|interested)/i.test(m),
   },
   {
     code: 'TOO_MANY_QUESTIONS',
@@ -57,23 +60,49 @@ export function validarMensaje(mensaje) {
   return { passed: errors.length === 0, errors };
 }
 
+// Rieles de longitud por canal. El prompt pide targets más estrictos (WA ~60 palabras,
+// IG 4-5 líneas); estos son ceilings generosos para atrapar solo excesos claros que el
+// gatekeeper global (200 palabras) deja pasar. Violarlos dispara el mismo regenerate loop.
+const CHANNEL_LIMITS = {
+  whatsapp:     { maxWords: 120, label: 'WhatsApp' },
+  instagram_dm: { maxChars: 300, label: 'Instagram DM' },
+};
+
 /**
  * Valida el objeto de mensajes multi-canal generado por scoring.js.
  * loom_script queda exento (es un guion largo, no un mensaje corto de outreach).
  * @param {object} messages - { email:{subject,body}, whatsapp, instagram_dm, loom_script }
  * @returns {{ passed: boolean, byChannel: Record<string, Array> }}
  */
-export function validateMessages(messages = {}) {
+// Variantes con separador de miles para buscar el número de reseñas en el texto
+// (1226 puede aparecer como "1226", "1,226" o "1.226").
+function reviewVariants(n) {
+  const s = String(n);
+  return [s, s.replace(/\B(?=(\d{3})+(?!\d))/g, ','), s.replace(/\B(?=(\d{3})+(?!\d))/g, '.')];
+}
+
+export function validateMessages(messages = {}, lead = {}) {
   const byChannel = {};
   const targets = {
     whatsapp: messages.whatsapp,
     instagram_dm: messages.instagram_dm,
     email: messages.email?.body,
   };
+  // REVIEWS_REQUIRED (bug Dolce): si el lead tiene >50 reseñas, el número es el dato
+  // verificable más fuerte y DEBE aparecer. Omitirlo desperdicia la personalización.
+  const reviewN = Number(lead.review_count) || 0;
+  const variants = reviewN > 50 ? reviewVariants(reviewN) : [];
   for (const [channel, text] of Object.entries(targets)) {
     if (!text) continue;
-    const { passed, errors } = validarMensaje(text);
-    if (!passed) byChannel[channel] = errors;
+    const { errors } = validarMensaje(text);
+    const limit = CHANNEL_LIMITS[channel];
+    if (limit?.maxWords && String(text).trim().split(/\s+/).filter(Boolean).length > limit.maxWords)
+      errors.push({ code: 'CHANNEL_TOO_LONG', description: `Excede ${limit.maxWords} palabras para ${limit.label}` });
+    if (limit?.maxChars && String(text).length > limit.maxChars)
+      errors.push({ code: 'CHANNEL_TOO_LONG', description: `Excede ${limit.maxChars} caracteres para ${limit.label}` });
+    if (variants.length && !variants.some(v => String(text).includes(v)))
+      errors.push({ code: 'NO_REVIEW_COUNT', description: `Lead tiene ${reviewN} reseñas y el mensaje no cita el número` });
+    if (errors.length) byChannel[channel] = errors;
   }
   return { passed: Object.keys(byChannel).length === 0, byChannel };
 }

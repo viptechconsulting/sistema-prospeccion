@@ -54,3 +54,37 @@ test('validateMessages: loom_script largo NO dispara R3; whatsapp inválido sí 
   assert.ok(v.byChannel.whatsapp);
   assert.equal(v.byChannel.loom_script, undefined);
 });
+
+test('riel de canal: WhatsApp >120 palabras falla aunque pase el gatekeeper global', () => {
+  // Mensaje limpio (pasa las 7 reglas) pero de 130 palabras: OK global, largo para WA.
+  const clean = 'Vi que tienen una reputación sólida en Google. Ayudamos a clínicas a responder más rápido sin sumar personal. ';
+  const wa = clean + Array(130).fill('palabra').join(' ') + ' ¿Vale la pena una llamada de 15 min?';
+  assert.equal(validarMensaje(wa).passed, true);                // gatekeeper global no lo frena... salvo 200 palabras
+  const v = validateMessages({ whatsapp: wa });
+  assert.equal(v.passed, false);
+  assert.ok(v.byChannel.whatsapp.some(e => e.code === 'CHANNEL_TOO_LONG'));
+});
+
+test('riel de canal: Instagram DM >300 chars falla', () => {
+  const ig = 'Vi su perfil. ' + 'x'.repeat(320);
+  const v = validateMessages({ instagram_dm: ig });
+  assert.ok(v.byChannel.instagram_dm?.some(e => e.code === 'CHANNEL_TOO_LONG'));
+});
+
+test('REVIEWS_REQUIRED (bug Dolce): lead con 1226 reseñas y mensaje que no las cita falla', () => {
+  const wa = 'Hi Dolce — saw your 5★ profile. We help medspas respond in <2 min, 24/7, no code. Worth a 15 min call this week?';
+  const v = validateMessages({ whatsapp: wa }, { review_count: 1226 });
+  assert.equal(v.passed, false);
+  assert.ok(v.byChannel.whatsapp.some(e => e.code === 'NO_REVIEW_COUNT'));
+});
+
+test('REVIEWS_REQUIRED: pasa si cita el número (con o sin coma de miles)', () => {
+  const wa = 'Hi Dolce — saw your 5★ with 1,226 reviews. We help medspas respond in <2 min, 24/7, no code. Worth a 15 min call this week?';
+  assert.equal(validateMessages({ whatsapp: wa }, { review_count: 1226 }).passed, true);
+});
+
+test('REVIEWS_REQUIRED: no dispara con ≤50 reseñas ni sin lead', () => {
+  const wa = 'Hi — saw your 5★ profile. We help medspas respond in <2 min, 24/7, no code. Worth a 15 min call this week?';
+  assert.equal(validateMessages({ whatsapp: wa }, { review_count: 40 }).passed, true);
+  assert.equal(validateMessages({ whatsapp: wa }).passed, true); // sin lead → backward compat
+});

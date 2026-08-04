@@ -24,7 +24,10 @@ const HARD_PRINCIPLES = `PRINCIPIOS DUROS (obligatorios — un mensaje que los v
 3. Valor antes de pedir: reconocimiento → insight verificable → propuesta concreta → CTA chico.
 4. Máximo 1 pregunta, siempre sobre el interés del prospecto ("¿vale la pena una llamada de 15 min?").
 5. Tono consistente (elegí UNO del brief del segmento). Sin críticas acumuladas al negocio.
-6. Cada mensaje debe poder firmarse con el nombre de un humano real.`;
+6. Cada mensaje debe poder firmarse con el nombre de un humano real.
+7. SI el lead tiene reseñas, CITÁ EL NÚMERO EXACTO en el mensaje (ej: "674 reseñas", "1,226 reviews"). Es el dato verificable más fuerte; "vi tu perfil 5★" sin el número desperdicia la personalización y se rechaza.
+8. CERRÁ con un CTA concreto y ACOTADO EN EL TIEMPO: "una llamada de 15 min esta semana", "te mando un video de 2 min mañana". Prohibido cerrar con vaguedades sin siguiente paso ("¿te interesa?", "worth exploring?", "sound relevant?").
+9. CERO estadísticas inventadas. PROHIBIDO "pierden 30% de leads", "40% más reservas", "15-20%", "2-3 reservas/semana", y todo porcentaje/cifra que no salga de los datos verificables del propio lead.`;
 
 const OUTREACH_SYSTEM = `Eres Daniel, especialista en cold email & prospección B2B. Tu misión: crear campañas devastadoramente efectivas que generen leads, cierren citas y construyan confianza desde el primer contacto.
 
@@ -390,12 +393,15 @@ Devuelve JSON estricto:
   const text = resp.content.find(c => c.type === 'text')?.text || '';
   const parsed = safeJSON(text);
 
-  // Gatekeeper: ningún mensaje llega al usuario sin validarse. Un regenerate si falla.
+  // Gatekeeper: ningún mensaje llega al usuario sin validarse. Hasta 3 regenerates
+  // (1 no alcanzaba: Haiku seguía metiendo suposiciones/cifras inventadas/CTAs flojos).
   let messages = parsed.messages || {};
-  let validation = validateMessages(messages);
-  if (messages && Object.keys(messages).length && !validation.passed) {
+  let validation = validateMessages(messages, lead);
+  let attempts = 0;
+  while (messages && Object.keys(messages).length && !validation.passed && attempts < 3) {
     messages = await regenerateMessages(user, messages, validation.byChannel, lang);
-    validation = validateMessages(messages);
+    validation = validateMessages(messages, lead);
+    attempts++;
   }
 
   return {
