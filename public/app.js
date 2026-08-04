@@ -52,12 +52,19 @@ function toast(msg, err = false) {
   t.textContent = msg;
   t.classList.toggle('err', err);
   t.classList.remove('hidden');
-  setTimeout(() => t.classList.add('hidden'), 2500);
+  setTimeout(() => t.classList.add('hidden'), err ? 12000 : 2500);
 }
 
 async function api(path, opts = {}) {
   const res = await fetch(path, { headers: { 'Content-Type': 'application/json' }, ...opts });
-  if (!res.ok) throw new Error(await res.text());
+  if (!res.ok) {
+    const body = await res.text();
+    let msg = body;
+    try { msg = JSON.parse(body).error || body; } catch {}   // unwrap {error: "..."}
+    const m = /"message":\s*"((?:[^"\\]|\\.)*)"/.exec(msg);   // dig out nested API reason if present
+    if (m) msg = m[1].replace(/\\"/g, '"');
+    throw new Error(msg);
+  }
   return res.json();
 }
 
