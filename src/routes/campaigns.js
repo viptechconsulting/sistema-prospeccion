@@ -1,10 +1,9 @@
 import express from 'express';
-import Anthropic from '@anthropic-ai/sdk';
+import { client } from '../services/anthropic.js';
 import { db } from '../db/index.js';
 import { runActor, normalizeLead } from '../services/apify.js';
 import { enrichLead } from '../services/enrichment.js';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export const campaigns = express.Router();
 
@@ -13,7 +12,7 @@ campaigns.post('/prompt', async (req, res) => {
   if (!prompt?.trim()) return res.status(400).json({ error: 'prompt requerido' });
 
   try {
-    const response = await client.messages.create({
+    const response = await client().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 1024,
       system: `Eres un parser de búsquedas de prospección. El usuario describe en lenguaje natural qué tipo de negocios/profesionales quiere buscar. Tu trabajo es extraer los parámetros estructurados para lanzar una búsqueda.

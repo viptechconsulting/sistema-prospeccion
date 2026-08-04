@@ -1,8 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { client } from './anthropic.js';
 import { db, getSetting } from '../db/index.js';
 import { getReviewsForLead } from './enrichment.js';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 const MODEL = 'claude-haiku-4-5-20251001';
 
 function safeJSON(text) {
@@ -154,7 +153,7 @@ Reglas:
 
 Devuelve SOLO JSON válido, sin texto fuera del JSON.`;
 
-  const resp = await client.messages.create({
+  const resp = await client().messages.create({
     model: MODEL, max_tokens: 1500,
     messages: [{ role: 'user', content: prompt }]
   });
@@ -317,7 +316,7 @@ Devuelve SOLO JSON válido:
   "notes": ""
 }`;
 
-  const resp = await client.messages.create({
+  const resp = await client().messages.create({
     model: MODEL, max_tokens: 800,
     messages: [{ role: 'user', content: prompt }]
   });
@@ -388,7 +387,7 @@ Devuelve JSON:
 
 Devuelve SOLO JSON válido.`;
 
-  const resp = await client.messages.create({
+  const resp = await client().messages.create({
     model: MODEL, max_tokens: 600,
     messages: [{ role: 'user', content: prompt }]
   });
@@ -492,7 +491,7 @@ Devuelve SOLO JSON válido.`;
 
   let analysis;
   try {
-    const resp = await client.messages.create({
+    const resp = await client().messages.create({
       model: MODEL, max_tokens: 1200,
       messages: [{ role: 'user', content: prompt }]
     });
@@ -599,7 +598,7 @@ Reglas:
 
 Devuelve JSON: { "message": "", "strategic_reason": "" }`;
 
-      const resp = await client.messages.create({ model: MODEL, max_tokens: 500, messages: [{ role: 'user', content: prompt }] });
+      const resp = await client().messages.create({ model: MODEL, max_tokens: 500, messages: [{ role: 'user', content: prompt }] });
       const parsed = safeJSON(resp.content.find(c => c.type === 'text')?.text || '');
       if (parsed.message) finalMessage = parsed.message;
       if (parsed.strategic_reason) strategicReason = parsed.strategic_reason;

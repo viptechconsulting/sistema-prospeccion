@@ -1,10 +1,9 @@
-import Anthropic from '@anthropic-ai/sdk';
+import { client } from './anthropic.js';
 import { db, getSetting } from '../db/index.js';
 import { getReviewsForLead } from './enrichment.js';
 import { calcularSegmento } from './segmentation.js';
 import { validateMessages } from './gatekeeper.js';
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // Ángulo + tono sugeridos por segmento (Playbook §3.3/§3.4). Guía la generación.
 const SEGMENT_BRIEF = {
@@ -383,7 +382,7 @@ Devuelve JSON estricto:
   "messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string} | null
 }`;
 
-  const resp = await client.messages.create({
+  const resp = await client().messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 4000,
     system: OUTREACH_SYSTEM,
@@ -435,7 +434,7 @@ TAREA: reescribí TODOS los mensajes cumpliendo estrictamente los PRINCIPIOS DUR
 Devolvé JSON estricto: {"messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
 
   try {
-    const resp = await client.messages.create({
+    const resp = await client().messages.create({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 2000,
       system: OUTREACH_SYSTEM,
@@ -478,7 +477,7 @@ const FOLLOWUP_OBJECTIVES = [
 
 export async function translateMessages(messages, targetLang) {
   const langName = targetLang === 'en' ? 'Inglés' : 'Español';
-  const resp = await client.messages.create({
+  const resp = await client().messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1500,
     system: `Traducís mensajes de outreach B2B manteniendo el tono consultivo, natural y casual. Mantenés nombres propios y marcadores como [HOOK 0:00-0:15]. Devolvés SOLO JSON con la misma estructura.`,
@@ -525,7 +524,7 @@ Idioma: ${lang}.
 Devuelve JSON estricto:
 {"messages": {"email": {"subject": string, "body": string}, "whatsapp": string, "instagram_dm": string, "loom_script": string}}`;
 
-  const resp = await client.messages.create({
+  const resp = await client().messages.create({
     model: 'claude-haiku-4-5-20251001',
     max_tokens: 1200,
     system: OUTREACH_SYSTEM,
