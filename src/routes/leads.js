@@ -3,8 +3,29 @@ import { db } from '../db/index.js';
 import { scoreAllPending, generateFollowup, translateMessages } from '../services/scoring.js';
 import { enrichFromGoogleMaps, enrichLead } from '../services/enrichment.js';
 import { generateStrategy, generateOutreachMessage, rewriteMessageTone, analyzeProspectReply, generateSmartFollowUp, logEvent, updateLeadStatus } from '../services/strategy.js';
+import { runAudit, getAudit, sendAuditChat, clearAuditChat } from '../services/audit.js';
 
 export const leads = express.Router();
+
+// ── Auditoría del sitio + chat con IA para corregirla ──────────────────
+leads.get('/:id/audit', (req, res) => {
+  try { res.json(getAudit(req.params.id)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+leads.post('/:id/audit', async (req, res) => {
+  try { res.json({ audit: await runAudit(req.params.id) }); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+leads.post('/:id/audit-chat', async (req, res) => {
+  const message = String(req.body?.message || '').trim();
+  if (!message) return res.status(400).json({ error: 'Escribe un mensaje' });
+  try { res.json(await sendAuditChat(req.params.id, message)); }
+  catch (e) { res.status(500).json({ error: e.message }); }
+});
+leads.delete('/:id/audit-chat', (req, res) => {
+  clearAuditChat(req.params.id);
+  res.json({ ok: true });
+});
 
 leads.get('/', (req, res) => {
   const { platform, status, minScore, campaignId, hasWebsite } = req.query;
@@ -53,6 +74,8 @@ leads.post('/enrich-all', async (_req, res) => {
 
 leads.delete('/:id', (req, res) => {
   db.prepare('DELETE FROM messages WHERE lead_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM lead_audits WHERE lead_id = ?').run(req.params.id);
+  db.prepare('DELETE FROM lead_audit_chat WHERE lead_id = ?').run(req.params.id);
   db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
 });

@@ -110,3 +110,25 @@ CREATE TABLE IF NOT EXISTS follow_up_recommendations (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_followups_lead ON follow_up_recommendations(lead_id, status);
+
+CREATE TABLE IF NOT EXISTS lead_audits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER NOT NULL REFERENCES leads(id),
+  load_time_ms INTEGER,
+  mobile_friendly INTEGER,
+  has_form INTEGER,
+  has_booking_or_chat INTEGER,
+  reachable INTEGER,
+  issues_json TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_lead_audits_lead ON lead_audits(lead_id);
+
+CREATE TABLE IF NOT EXISTS lead_audit_chat (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lead_id INTEGER NOT NULL REFERENCES leads(id),
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_lead_audit_chat_lead ON lead_audit_chat(lead_id);

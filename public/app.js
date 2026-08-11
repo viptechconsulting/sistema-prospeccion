@@ -172,6 +172,8 @@ async function openLead(id) {
   } catch (e) { toast('Error cargando lead', true); return; }
   try { strategy = (await api(`/api/leads/${id}/strategy`)).strategy; } catch {}
   try { timeline = (await api(`/api/conversations/${id}/timeline`)).timeline || []; } catch {}
+  let auditData = { audit: null, chat: [] };
+  try { auditData = await api(`/api/leads/${id}/audit`); } catch {}
 
   const parsed = parseMessages(lead.suggested_message);
   const wa = parsed?.whatsapp || '';
@@ -193,6 +195,12 @@ async function openLead(id) {
       <div class="accordion-body">
         ${buildBusinessSnapshot(lead)}
       </div>
+    </div>
+
+    <!-- 1b. AUDITORÍA DEL SITIO + IA -->
+    <div class="accordion-section open">
+      <h3 class="accordion-header">Auditoría del sitio + IA</h3>
+      <div class="accordion-body" id="lead-audit-section"></div>
     </div>
 
     <!-- 2. OPPORTUNITY INSIGHT -->
@@ -259,6 +267,97 @@ async function openLead(id) {
 
   $('#modal-lead').classList.remove('hidden');
   bindLeadDetailEvents(id, lead, strategy, parsed, wa, emailSubject, emailBody, ig, loom, legacy);
+  renderLeadAudit(id, lead, auditData);
+}
+
+// ── Auditoría del sitio + chat con IA (portado de chat.lynkro.io) ───────
+let _auditLead = null;
+function renderLeadAudit(id, lead, data) {
+  const box = document.getElementById('lead-audit-section');
+  if (!box) return;
+  _auditLead = lead;
+  const a = data && data.audit;
+  const chat = (data && data.chat) || [];
+  const yn = v => v ? '<span style="color:#00ff88">sí</span>' : '<span style="color:#ff6666">no</span>';
+  const signals = a ? `
+    <div class="contact-card" style="margin-bottom:8px">
+      <div class="cc-row"><span class="cc-k">Carga</span><span>${a.load_time_ms != null ? a.load_time_ms + ' ms' : 'n/d'}</span></div>
+      <div class="cc-row"><span class="cc-k">Apto móvil</span><span>${yn(a.mobile_friendly)}</span></div>
+      <div class="cc-row"><span class="cc-k">Formulario</span><span>${yn(a.has_form)}</span></div>
+      <div class="cc-row"><span class="cc-k">Reservas / chat</span><span>${yn(a.has_booking_or_chat)}</span></div>
+    </div>
+    ${(() => { let iss = []; try { iss = JSON.parse(a.issues_json || '[]'); } catch {} return iss.length ? '<ul style="margin:6px 0 0;padding-left:18px">' + iss.map(i => `<li>${escapeHtml(i)}</li>`).join('') + '</ul>' : ''; })()}
+  ` : `<div class="s" style="color:#888">Sin auditoría todavía${lead.website ? '' : ' · este lead no tiene website'}.</div>`;
+
+  box.innerHTML = `
+    ${signals}
+    <button class="secondary" id="btn-run-audit" style="margin-top:8px">${a ? 'Re-auditar sitio' : 'Auditar sitio'}</button>
+
+    <div style="margin-top:14px;border-top:1px solid #2a2a2a;padding-top:12px">
+      <div style="font-size:12px;font-weight:600;color:#aaa;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">💬 Revisar con IA</div>
+      <div style="color:#888;font-size:12px;margin-bottom:8px">¿La auditoría se equivocó o le falta contexto? Corrígela — la IA ajusta el análisis.</div>
+      <div id="audit-chat-log" style="max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;align-items:flex-end">
+        <textarea id="audit-chat-input" rows="2" placeholder="Ej: el sitio sí tiene reservas por Instagram, corrige eso" style="flex:1"></textarea>
+        <button class="primary" id="btn-audit-chat-send">Enviar</button>
+      </div>
+      <div style="margin-top:6px"><span id="btn-audit-chat-clear" style="cursor:pointer;text-decoration:underline;color:#888;font-size:12px">Limpiar conversación</span></div>
+    </div>`;
+
+  renderAuditChat(chat);
+  document.getElementById('btn-run-audit').onclick = () => runLeadAudit(id);
+  document.getElementById('btn-audit-chat-send').onclick = () => sendLeadAuditChat(id);
+  document.getElementById('btn-audit-chat-clear').onclick = () => clearLeadAuditChat(id);
+}
+
+function auditChatBubble(role, text) {
+  const div = document.createElement('div');
+  div.style.cssText = 'max-width:90%;padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word;' +
+    (role === 'user' ? 'align-self:flex-end;background:#0f3d2a;color:#c9ffe6' : 'align-self:flex-start;background:#161616;border:1px solid #2a2a2a;color:#e0e0e0');
+  div.textContent = text;
+  return div;
+}
+function renderAuditChat(list) {
+  const log = document.getElementById('audit-chat-log');
+  if (!log) return;
+  log.innerHTML = '';
+  if (!list || !list.length) { log.innerHTML = '<div style="color:#888;font-size:12px">Aún no has chateado sobre esta auditoría.</div>'; return; }
+  list.forEach(m => log.appendChild(auditChatBubble(m.role, m.content)));
+  log.scrollTop = log.scrollHeight;
+}
+async function runLeadAudit(id) {
+  const btn = document.getElementById('btn-run-audit');
+  if (btn) { btn.disabled = true; btn.textContent = 'Auditando…'; }
+  try {
+    await api(`/api/leads/${id}/audit`, { method: 'POST' });
+    const data = await api(`/api/leads/${id}/audit`);
+    renderLeadAudit(id, _auditLead || {}, data);
+    toast('Auditoría lista');
+  } catch (e) { toast('Error: ' + e.message, true); if (btn) { btn.disabled = false; btn.textContent = 'Auditar sitio'; } }
+}
+async function sendLeadAuditChat(id) {
+  const input = document.getElementById('audit-chat-input');
+  const msg = (input && input.value || '').trim();
+  if (!msg) return;
+  const log = document.getElementById('audit-chat-log');
+  const send = document.getElementById('btn-audit-chat-send');
+  if (log.querySelector('div[style*="color:#888"]')) log.innerHTML = '';
+  log.appendChild(auditChatBubble('user', msg));
+  input.value = '';
+  const thinking = auditChatBubble('assistant', 'Pensando…'); thinking.style.opacity = '.6';
+  log.appendChild(thinking); log.scrollTop = log.scrollHeight;
+  if (send) send.disabled = true;
+  try {
+    const { reply } = await api(`/api/leads/${id}/audit-chat`, { method: 'POST', body: JSON.stringify({ message: msg }) });
+    thinking.style.opacity = '1'; thinking.textContent = reply;
+  } catch (e) {
+    thinking.style.opacity = '1'; thinking.textContent = 'Error: ' + e.message;
+  } finally { if (send) send.disabled = false; log.scrollTop = log.scrollHeight; }
+}
+async function clearLeadAuditChat(id) {
+  if (!confirm('¿Limpiar toda la conversación de esta auditoría?')) return;
+  try { await api(`/api/leads/${id}/audit-chat`, { method: 'DELETE' }); renderAuditChat([]); }
+  catch (e) { toast('Error: ' + e.message, true); }
 }
 
 function buildBusinessSnapshot(lead) {
