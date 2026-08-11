@@ -138,7 +138,12 @@ campaigns.get('/:id/leads', (req, res) => {
 });
 
 campaigns.delete('/:id', (req, res) => {
-  db.prepare('DELETE FROM messages WHERE lead_id IN (SELECT id FROM leads WHERE campaign_id = ?)').run(req.params.id);
+  const subLeads = '(SELECT id FROM leads WHERE campaign_id = ?)';
+  db.prepare(`DELETE FROM messages WHERE lead_id IN ${subLeads}`).run(req.params.id);
+  // lead_audits/lead_audit_chat no tienen ON DELETE CASCADE (a diferencia del resto
+  // de tablas hijas), así que hay que limpiarlas explícito o el DELETE de leads falla por FK.
+  db.prepare(`DELETE FROM lead_audits WHERE lead_id IN ${subLeads}`).run(req.params.id);
+  db.prepare(`DELETE FROM lead_audit_chat WHERE lead_id IN ${subLeads}`).run(req.params.id);
   db.prepare('DELETE FROM leads WHERE campaign_id = ?').run(req.params.id);
   db.prepare('DELETE FROM campaigns WHERE id = ?').run(req.params.id);
   res.json({ ok: true });

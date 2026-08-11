@@ -113,7 +113,7 @@ CREATE INDEX IF NOT EXISTS idx_followups_lead ON follow_up_recommendations(lead_
 
 CREATE TABLE IF NOT EXISTS lead_audits (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  lead_id INTEGER NOT NULL REFERENCES leads(id),
+  lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   load_time_ms INTEGER,
   mobile_friendly INTEGER,
   has_form INTEGER,
@@ -126,7 +126,7 @@ CREATE INDEX IF NOT EXISTS idx_lead_audits_lead ON lead_audits(lead_id);
 
 CREATE TABLE IF NOT EXISTS lead_audit_chat (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  lead_id INTEGER NOT NULL REFERENCES leads(id),
+  lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
   role TEXT NOT NULL,
   content TEXT NOT NULL,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
