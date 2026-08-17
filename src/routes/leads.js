@@ -40,6 +40,40 @@ leads.get('/', (req, res) => {
   res.json(db.prepare(sql).all(...args));
 });
 
+// ── Exportar prospectos a CSV (respeta los mismos filtros) ─────────────
+const CSV_COLS = [
+  'id', 'campaign', 'platform', 'name', 'company', 'contact_person', 'email', 'phone',
+  'website', 'instagram_url', 'gmb_url', 'profile_url', 'rating', 'review_count',
+  'score', 'score_reason', 'status', 'segment', 'top_positive', 'top_negative',
+  'has_ads', 'followup_count', 'contacted_at', 'last_followup_at', 'notes', 'created_at'
+];
+const csvCell = (v) => {
+  const s = v == null ? '' : String(v);
+  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+leads.get('/export.csv', (req, res) => {
+  const { platform, status, minScore, campaignId, hasWebsite } = req.query;
+  const where = [], args = [];
+  if (platform) { where.push('l.platform = ?'); args.push(platform); }
+  if (status) { where.push('l.status = ?'); args.push(status); }
+  if (minScore) { where.push('l.score >= ?'); args.push(Number(minScore)); }
+  if (campaignId) { where.push('l.campaign_id = ?'); args.push(Number(campaignId)); }
+  if (hasWebsite === 'yes') where.push("l.website IS NOT NULL AND l.website != ''");
+  if (hasWebsite === 'no') where.push("(l.website IS NULL OR l.website = '')");
+  const sql = `SELECT l.*, COALESCE(c.name_campaign, c.niche) AS campaign
+    FROM leads l LEFT JOIN campaigns c ON l.campaign_id = c.id
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+    ORDER BY l.campaign_id, l.score DESC NULLS LAST, l.id DESC`;
+  const rows = db.prepare(sql).all(...args);
+  const lines = [CSV_COLS.join(',')];
+  for (const r of rows) lines.push(CSV_COLS.map(c => csvCell(r[c])).join(','));
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="prospectos-${stamp}.csv"`);
+  res.send('﻿' + lines.join('\r\n')); // BOM para que Excel muestre acentos
+});
+
 leads.post('/:id/enrich', async (req, res) => {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
   if (!lead) return res.status(404).json({ error: 'not found' });

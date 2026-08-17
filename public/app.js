@@ -876,6 +876,16 @@ $$('nav button[data-view]').forEach(b => b.onclick = () => {
   loadLeads();
 }));
 $('#btn-refresh').onclick = loadAll;
+$('#btn-export').onclick = () => {
+  const q = new URLSearchParams();
+  const f = state.filters || {};
+  if (f.platform) q.set('platform', f.platform);
+  if (f.status) q.set('status', f.status);
+  if (f.minScore) q.set('minScore', f.minScore);
+  if (f.campaignId) q.set('campaignId', f.campaignId);
+  if (f.hasWebsite) q.set('hasWebsite', f.hasWebsite);
+  window.location = '/api/leads/export.csv?' + q;
+};
 $('#btn-score').onclick = async () => {
   toast('Analizando…');
   const r = await api('/api/leads/score-pending', { method: 'POST' });
